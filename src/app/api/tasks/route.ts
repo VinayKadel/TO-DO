@@ -10,6 +10,7 @@ const createTaskSchema = z.object({
   name: z.string().min(1, 'Task name is required').max(100, 'Task name is too long'),
   description: z.string().max(500, 'Description is too long').optional(),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid color format').optional(),
+  emoji: z.string().optional(),
 });
 
 // GET - Fetch all tasks for the authenticated user
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, description, color } = validationResult.data;
+    const { name, description, color, emoji } = validationResult.data;
 
     // Create task
     const task = await prisma.task.create({
@@ -92,6 +93,7 @@ export async function POST(request: NextRequest) {
         name,
         description: description || null,
         color: color || '#0ea5e9',
+        emoji: emoji || null,
         userId: session.user.id,
       },
       include: {

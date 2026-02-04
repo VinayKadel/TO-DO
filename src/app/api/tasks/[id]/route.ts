@@ -10,6 +10,7 @@ const updateTaskSchema = z.object({
   name: z.string().min(1, 'Task name is required').max(100, 'Task name is too long').optional(),
   description: z.string().max(500, 'Description is too long').nullable().optional(),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid color format').optional(),
+  emoji: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
 });
 
