@@ -60,7 +60,7 @@ export function EditTaskModal({ task, isOpen, onClose, onUpdate, onDelete }: Edi
     try {
       await onUpdate(task.id, {
         name: name.trim(),
-        description: description.trim() || null,
+        description: description.trim() || undefined,
         color,
       });
       onClose();
