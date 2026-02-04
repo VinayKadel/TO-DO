@@ -2,8 +2,8 @@
 
 // Main habit tracker grid component with drag-and-drop sorting
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Plus, ChevronLeft, ChevronRight, Calendar, GripVertical } from 'lucide-react';
-import { format, addDays, subDays } from 'date-fns';
+import { Plus, ChevronLeft, ChevronRight, Calendar, GripVertical, CheckCircle2 } from 'lucide-react';
+import { format, addDays, subDays, isAfter, startOfDay } from 'date-fns';
 import { Button } from '@/components/ui';
 import { DateRangeSelector } from '@/components/ui/date-range-selector';
 import { HabitCheckbox } from './habit-checkbox';
@@ -353,7 +353,16 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
                 <p className="text-sm mt-1 text-gray-500 dark:text-gray-400">Add your first task to start tracking</p>
               </div>
             ) : (
-              tasks.map((task) => (
+              tasks.map((task) => {
+                // Get the last completion date to determine after which dates to show strikethrough
+                const lastCompletionDate = task.completions.length > 0
+                  ? task.completions.reduce((latest, c) => {
+                      const cDate = new Date(c.date);
+                      return cDate > latest ? cDate : latest;
+                    }, new Date(0))
+                  : null;
+                
+                return (
                 <div 
                   key={task.id} 
                   draggable
@@ -366,7 +375,8 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
                   className={cn(
                     'habit-grid border-b border-gray-100 dark:border-gray-700 last:border-b-0 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors',
                     dragOverTaskId === task.id && 'bg-primary-50 dark:bg-primary-900/30 border-primary-300 dark:border-primary-600',
-                    draggedTaskId === task.id && 'opacity-50'
+                    draggedTaskId === task.id && 'opacity-50',
+                    task.isCompleted && 'bg-green-50/30 dark:bg-green-900/10'
                   )}
                 >
                   {/* Task name cell */}
@@ -383,14 +393,25 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
                         style={{ backgroundColor: task.color }}
                       />
                     )}
-                    <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                    <span className={cn(
+                      "text-sm font-medium truncate group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors",
+                      task.isCompleted 
+                        ? "text-green-700 dark:text-green-400" 
+                        : "text-gray-800 dark:text-gray-200"
+                    )}>
                       {task.name}
                     </span>
+                    {task.isCompleted && (
+                      <CheckCircle2 className="w-4 h-4 text-green-500 dark:text-green-400 flex-shrink-0" />
+                    )}
                   </div>
 
                   {/* Completion checkboxes */}
                   {dateColumns.map((col) => {
                     const isCompleted = isTaskCompletedOnDate(task.completions, col.date);
+                    // For completed habits, show strikethrough for dates after the last completion
+                    const isAfterCompletedDate = !!(task.isCompleted && lastCompletionDate && 
+                      isAfter(startOfDay(col.date), startOfDay(lastCompletionDate)));
                     
                     return (
                       <div
@@ -405,13 +426,15 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
                           date={col.dateString}
                           checked={isCompleted}
                           color={task.color}
+                          isHabitCompleted={task.isCompleted}
+                          isAfterCompletedDate={isAfterCompletedDate}
                           onToggle={handleToggleCompletion}
                         />
                       </div>
                     );
                   })}
                 </div>
-              ))
+              )})
             )}
           </div>
         </div>

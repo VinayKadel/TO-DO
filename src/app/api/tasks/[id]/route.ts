@@ -12,6 +12,7 @@ const updateTaskSchema = z.object({
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid color format').optional(),
   emoji: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
+  isCompleted: z.boolean().optional(),
 });
 
 // GET - Fetch a single task
@@ -100,9 +101,18 @@ export async function PATCH(
     }
 
     // Update task
+    const updateData: Record<string, unknown> = { ...validationResult.data };
+    
+    // If marking as completed, set completedAt timestamp
+    if (validationResult.data.isCompleted === true) {
+      updateData.completedAt = new Date();
+    } else if (validationResult.data.isCompleted === false) {
+      updateData.completedAt = null;
+    }
+    
     const task = await prisma.task.update({
       where: { id: id },
-      data: validationResult.data,
+      data: updateData,
       include: {
         completions: true,
       },

@@ -34,6 +34,8 @@ model Task {
   color       String    @default("#0ea5e9") // Default primary color
   emoji       String?   // Optional emoji icon for the task
   isActive    Boolean   @default(true)
+  isCompleted Boolean   @default(false) // Whether the habit goal is achieved
+  completedAt DateTime? // When the habit was marked as completed
   sortOrder   Int       @default(0) // For custom ordering
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

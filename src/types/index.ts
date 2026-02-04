@@ -30,6 +30,8 @@ export interface Task {
   color: string;
   emoji?: string | null;
   isActive: boolean;
+  isCompleted: boolean;
+  completedAt?: Date | null;
   sortOrder: number;
   createdAt: Date;
   updatedAt: Date;
@@ -66,6 +68,7 @@ export interface UpdateTaskInput {
   color?: string;
   emoji?: string;
   isActive?: boolean;
+  isCompleted?: boolean;
 }
 
 export interface ToggleCompletionInput {

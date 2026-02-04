@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { Modal, Button, Input } from '@/components/ui';
 import { EmojiPicker } from '@/components/ui/emoji-picker';
 import { Task, UpdateTaskInput } from '@/types';
-import { Trash2 } from 'lucide-react';
+import { Trash2, CheckCircle2, RotateCcw } from 'lucide-react';
 
 // Preset colors for tasks
 const PRESET_COLORS = [
@@ -35,7 +35,9 @@ export function EditTaskModal({ task, isOpen, onClose, onUpdate, onDelete }: Edi
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
 
   // Populate form when task changes
   useEffect(() => {
@@ -90,9 +92,39 @@ export function EditTaskModal({ task, isOpen, onClose, onUpdate, onDelete }: Edi
     }
   };
 
+  const handleMarkComplete = async () => {
+    if (!task) return;
+    
+    setIsCompleting(true);
+    try {
+      await onUpdate(task.id, { isCompleted: true });
+      setShowCompleteConfirm(false);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to mark as completed');
+    } finally {
+      setIsCompleting(false);
+    }
+  };
+
+  const handleReactivate = async () => {
+    if (!task) return;
+    
+    setIsCompleting(true);
+    try {
+      await onUpdate(task.id, { isCompleted: false });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reactivate habit');
+    } finally {
+      setIsCompleting(false);
+    }
+  };
+
   const handleClose = () => {
     setError('');
     setShowDeleteConfirm(false);
+    setShowCompleteConfirm(false);
     onClose();
   };
 
@@ -126,11 +158,65 @@ export function EditTaskModal({ task, isOpen, onClose, onUpdate, onDelete }: Edi
             </Button>
           </div>
         </div>
+      ) : showCompleteConfirm ? (
+        <div className="p-6 space-y-4">
+          <div className="flex items-center gap-3 text-green-600 dark:text-green-400">
+            <CheckCircle2 className="w-8 h-8" />
+            <h3 className="text-lg font-semibold">Mark Habit as Completed?</h3>
+          </div>
+          <p className="text-gray-700 dark:text-gray-300">
+            Marking <strong>&quot;{task.name}&quot;</strong> as completed means you&apos;ve achieved your habit goal!
+            All future dates will show as completed with a strikethrough.
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            You can reactivate this habit later if needed.
+          </p>
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setShowCompleteConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+              onClick={handleMarkComplete}
+              isLoading={isCompleting}
+            >
+              <CheckCircle2 className="w-4 h-4 mr-1" />
+              Complete Habit
+            </Button>
+          </div>
+        </div>
       ) : (
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {error && (
             <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300 text-sm">
               {error}
+            </div>
+          )}
+
+          {/* Completed status banner */}
+          {task.isCompleted && (
+            <div className="p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg flex items-center justify-between">
+              <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
+                <CheckCircle2 className="w-5 h-5" />
+                <span className="text-sm font-medium">Habit Completed!</span>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleReactivate}
+                isLoading={isCompleting}
+                className="text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/50"
+              >
+                <RotateCcw className="w-4 h-4 mr-1" />
+                Reactivate
+              </Button>
             </div>
           )}
 
@@ -184,6 +270,17 @@ export function EditTaskModal({ task, isOpen, onClose, onUpdate, onDelete }: Edi
               <Trash2 className="w-4 h-4 mr-1" />
               Delete
             </Button>
+            {!task.isCompleted && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setShowCompleteConfirm(true)}
+                className="text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30"
+              >
+                <CheckCircle2 className="w-4 h-4 mr-1" />
+                Complete
+              </Button>
+            )}
             <div className="flex-1" />
             <Button
               type="button"
