@@ -4,14 +4,26 @@ import { getServerSession } from 'next-auth';
 import { z } from 'zod';
 import prisma from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
-import { startOfDay } from 'date-fns';
 
 // Validation schema for toggling completion
 const toggleCompletionSchema = z.object({
   taskId: z.string().min(1, 'Task ID is required'),
-  date: z.string().datetime({ message: 'Invalid date format' }),
+  date: z.string(), // Accept any date string format
   completed: z.boolean(),
 });
+
+/**
+ * Parse date string and return UTC date at noon to avoid timezone issues
+ */
+function parseToUTCNoon(dateStr: string): Date {
+  // Handle both ISO format and yyyy-MM-dd format
+  const date = new Date(dateStr);
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const day = date.getDate();
+  // Return date at noon UTC to avoid timezone boundary issues
+  return new Date(Date.UTC(year, month, day, 12, 0, 0));
+}
 
 // POST - Toggle task completion for a specific date
 export async function POST(request: NextRequest) {
@@ -36,7 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { taskId, date, completed } = validationResult.data;
-    const completionDate = startOfDay(new Date(date));
+    const completionDate = parseToUTCNoon(date);
 
     // Verify task belongs to user
     const task = await prisma.task.findFirst({

@@ -40,21 +40,38 @@ export function generateDateColumns(
 
 /**
  * Format a date to ISO string for storage (date only, no time)
+ * Uses noon UTC to avoid timezone issues
  */
 export function formatDateForStorage(date: Date): string {
-  return startOfDay(date).toISOString();
+  // Parse the date string and create a UTC date at noon to avoid timezone shifts
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const day = date.getDate();
+  // Create date at noon UTC to avoid any timezone boundary issues
+  return new Date(Date.UTC(year, month, day, 12, 0, 0)).toISOString();
 }
 
 /**
  * Check if a task is completed on a specific date
+ * Compares using local date parts to avoid timezone issues
  */
 export function isTaskCompletedOnDate(
   completions: { date: Date | string; completed: boolean }[],
   targetDate: Date
 ): boolean {
+  const targetYear = targetDate.getFullYear();
+  const targetMonth = targetDate.getMonth();
+  const targetDay = targetDate.getDate();
+  
   return completions.some((completion) => {
     const completionDate = new Date(completion.date);
-    return isSameDay(completionDate, targetDate) && completion.completed;
+    // Compare using UTC date parts since we store at noon UTC
+    return (
+      completionDate.getUTCFullYear() === targetYear &&
+      completionDate.getUTCMonth() === targetMonth &&
+      completionDate.getUTCDate() === targetDay &&
+      completion.completed
+    );
   });
 }
 
