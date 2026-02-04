@@ -209,13 +209,33 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
     triggerAutoSave(newItems);
   };
 
-  // Handle Enter key in input (Shift+Enter for new line, Enter to submit)
+  // Detect if device is mobile/touch
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    // Check for touch device
+    const checkMobile = () => {
+      setIsMobile('ontouchstart' in window || navigator.maxTouchPoints > 0);
+    };
+    checkMobile();
+  }, []);
+
+  // Handle Enter key in input
+  // Desktop: Enter submits, Shift+Enter adds new line
+  // Mobile: Enter adds new line (use Add button to submit)
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      addTask();
+    if (e.key === 'Enter') {
+      if (isMobile) {
+        // On mobile, let Enter add new lines naturally
+        return;
+      }
+      if (!e.shiftKey) {
+        // Desktop: Enter without Shift submits
+        e.preventDefault();
+        addTask();
+      }
+      // Shift+Enter allows default behavior (new line)
     }
-    // Shift+Enter allows default behavior (new line in textarea)
   };
 
   // Auto-resize textarea
@@ -321,7 +341,7 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
             value={newTaskText}
             onChange={handleTextareaChange}
             onKeyDown={handleKeyDown}
-            placeholder={`Add a task for ${isTodaySelected ? 'today' : format(selectedDate, 'EEEE')}... (Shift+Enter for new line)`}
+            placeholder={`Add a task for ${isTodaySelected ? 'today' : format(selectedDate, 'EEEE')}...${isMobile ? '' : ' (Shift+Enter for new line)'}`}
             rows={1}
             className="flex-1 bg-transparent border-none outline-none text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 resize-none min-h-[24px]"
           />
