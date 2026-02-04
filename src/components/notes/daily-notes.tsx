@@ -3,7 +3,7 @@
 // Daily To-Do Manager - manage your daily tasks
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { format, addDays, subDays, isToday } from 'date-fns';
-import { ChevronLeft, ChevronRight, Calendar, Loader2, Check, Plus, Trash2, GripVertical, ListTodo } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, Loader2, Check, Plus, Trash2, Pencil, X, ListTodo } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { formatDateForStorage } from '@/lib/date-utils';
 import { DailyNote } from '@/types';
@@ -104,6 +104,9 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
   
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const editInputRef = useRef<HTMLTextAreaElement>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
 
   const dateKey = format(selectedDate, 'yyyy-MM-dd');
 
@@ -207,6 +210,59 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
     const newItems = items.filter(item => item.id !== id);
     setItems(newItems);
     triggerAutoSave(newItems);
+  };
+
+  // Start editing a task
+  const startEditing = (item: TodoItem) => {
+    setEditingId(item.id);
+    setEditText(item.text);
+    setTimeout(() => {
+      editInputRef.current?.focus();
+      // Auto-resize the textarea
+      if (editInputRef.current) {
+        editInputRef.current.style.height = 'auto';
+        editInputRef.current.style.height = editInputRef.current.scrollHeight + 'px';
+      }
+    }, 10);
+  };
+
+  // Save edited task
+  const saveEdit = () => {
+    if (!editingId || !editText.trim()) {
+      cancelEdit();
+      return;
+    }
+    const newItems = items.map(item =>
+      item.id === editingId ? { ...item, text: editText.trim() } : item
+    );
+    setItems(newItems);
+    triggerAutoSave(newItems);
+    setEditingId(null);
+    setEditText('');
+  };
+
+  // Cancel editing
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditText('');
+  };
+
+  // Handle edit textarea keydown
+  const handleEditKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelEdit();
+    } else if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
+      e.preventDefault();
+      saveEdit();
+    }
+  };
+
+  // Auto-resize edit textarea
+  const handleEditTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setEditText(e.target.value);
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px';
   };
 
   // Detect if device is mobile/touch
@@ -381,17 +437,19 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
               <div
                 key={item.id}
                 className={cn(
-                  'group flex items-center gap-3 p-4 rounded-xl',
+                  'group flex items-start gap-3 p-4 rounded-xl',
                   'bg-white dark:bg-gray-800',
                   'border border-gray-100 dark:border-gray-700',
                   'shadow-sm hover:shadow-md transition-all duration-200',
-                  'hover:border-primary-200 dark:hover:border-primary-800'
+                  editingId === item.id 
+                    ? 'border-primary-300 dark:border-primary-600 ring-2 ring-primary-100 dark:ring-primary-900/30'
+                    : 'hover:border-primary-200 dark:hover:border-primary-800'
                 )}
               >
                 <button
                   onClick={() => toggleTask(item.id)}
                   className={cn(
-                    'flex-shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all duration-200',
+                    'flex-shrink-0 w-6 h-6 mt-0.5 rounded-md border-2 flex items-center justify-center transition-all duration-200',
                     'border-gray-300 dark:border-gray-600',
                     'hover:border-primary-500 dark:hover:border-primary-400',
                     'hover:bg-primary-50 dark:hover:bg-primary-900/30'
@@ -399,9 +457,47 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
                 >
                 </button>
                 
-                <span className="flex-1 text-gray-800 dark:text-gray-200 font-medium whitespace-pre-wrap">
-                  {item.text}
-                </span>
+                {editingId === item.id ? (
+                  <div className="flex-1 flex flex-col gap-2">
+                    <textarea
+                      ref={editInputRef}
+                      value={editText}
+                      onChange={handleEditTextChange}
+                      onKeyDown={handleEditKeyDown}
+                      className="w-full bg-transparent border-none outline-none text-gray-800 dark:text-gray-200 font-medium resize-none min-h-[24px]"
+                      rows={1}
+                    />
+                    <div className="flex items-center gap-2">
+                      <Button variant="primary" size="sm" onClick={saveEdit}>
+                        Save
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={cancelEdit}>
+                        Cancel
+                      </Button>
+                      <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
+                        {isMobile ? 'Tap Save when done' : 'Enter to save, Esc to cancel'}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <span 
+                      className="flex-1 text-gray-800 dark:text-gray-200 font-medium whitespace-pre-wrap cursor-pointer hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                      onClick={() => startEditing(item)}
+                      title="Click to edit"
+                    >
+                      {item.text}
+                    </span>
+                    
+                    <button
+                      onClick={() => startEditing(item)}
+                      className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-300 dark:text-gray-600 hover:text-primary-500 dark:hover:text-primary-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20"
+                      title="Edit task"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
                 
                 <button
                   onClick={() => deleteTask(item.id)}
