@@ -1,0 +1,131 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar styles */
+::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Base styles */
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+  }
+}
+
+/* Custom component styles */
+@layer components {
+  /* Button styles */
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-lg font-medium 
+           transition-all duration-200 focus:outline-none focus:ring-2 
+           focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary-600 text-white hover:bg-primary-700 
+           focus:ring-primary-500 active:bg-primary-800;
+  }
+
+  .btn-secondary {
+    @apply btn bg-white text-gray-700 border border-gray-300 
+           hover:bg-gray-50 focus:ring-primary-500;
+  }
+
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700 
+           focus:ring-red-500 active:bg-red-800;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-gray-600 hover:bg-gray-100 
+           focus:ring-gray-500;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-sm;
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-lg;
+  }
+
+  /* Input styles */
+  .input {
+    @apply w-full px-4 py-2.5 border border-gray-300 rounded-lg 
+           bg-white text-gray-900 placeholder-gray-400
+           focus:outline-none focus:ring-2 focus:ring-primary-500 
+           focus:border-primary-500 transition-colors duration-200;
+  }
+
+  .input-error {
+    @apply border-red-500 focus:ring-red-500 focus:border-red-500;
+  }
+
+  /* Card styles */
+  .card {
+    @apply bg-white rounded-xl shadow-sm border border-gray-100;
+  }
+
+  /* Checkbox styles for habit grid */
+  .habit-checkbox {
+    @apply w-8 h-8 rounded-lg border-2 cursor-pointer 
+           transition-all duration-200 flex items-center justify-center
+           hover:scale-105 active:scale-95;
+  }
+
+  .habit-checkbox-unchecked {
+    @apply habit-checkbox border-gray-300 bg-white hover:border-gray-400;
+  }
+
+  .habit-checkbox-checked {
+    @apply habit-checkbox border-primary-500 bg-primary-500 text-white;
+  }
+}
+
+/* Animations */
+@layer utilities {
+  .animate-check {
+    animation: checkmark 0.3s ease-out;
+  }
+
+  @keyframes checkmark {
+    0% {
+      transform: scale(0);
+    }
+    50% {
+      transform: scale(1.2);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+}
+
+/* Grid specific styles */
+.habit-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 200px) repeat(var(--days-count, 14), minmax(60px, 1fr));
+}
+
+@media (max-width: 768px) {
+  .habit-grid {
+    grid-template-columns: minmax(120px, 150px) repeat(var(--days-count, 14), minmax(50px, 1fr));
+  }
+}

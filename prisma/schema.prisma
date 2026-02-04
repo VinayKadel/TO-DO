@@ -1,0 +1,64 @@
+// Prisma schema for To-Do Habit Tracker
+// Uses SQLite for simplicity - can be changed to PostgreSQL for production
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// User model for authentication
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String    // Hashed password
+  name          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  tasks         Task[]
+  
+  @@map("users")
+}
+
+// Task model - represents a habit/task to track
+model Task {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  color       String    @default("#0ea5e9") // Default primary color
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relations
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  completions TaskCompletion[]
+  
+  @@index([userId])
+  @@map("tasks")
+}
+
+// TaskCompletion model - tracks which tasks are completed on which days
+model TaskCompletion {
+  id        String   @id @default(cuid())
+  date      DateTime // The date the task was completed (stored as date only)
+  completed Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  // Ensure only one completion record per task per day
+  @@unique([taskId, date])
+  @@index([taskId])
+  @@index([date])
+  @@map("task_completions")
+}
