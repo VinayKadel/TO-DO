@@ -3,6 +3,7 @@
 // Add task modal component
 import { useState } from 'react';
 import { Modal, Button, Input } from '@/components/ui';
+import { EmojiPicker } from '@/components/ui/emoji-picker';
 import { CreateTaskInput } from '@/types';
 
 // Preset colors for tasks
@@ -27,6 +28,7 @@ export function AddTaskModal({ isOpen, onClose, onAdd }: AddTaskModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [color, setColor] = useState(PRESET_COLORS[0]);
+  const [emoji, setEmoji] = useState<string | undefined>(undefined);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -46,12 +48,14 @@ export function AddTaskModal({ isOpen, onClose, onAdd }: AddTaskModalProps) {
         name: name.trim(),
         description: description.trim() || undefined,
         color,
+        emoji,
       });
       
       // Reset form and close
       setName('');
       setDescription('');
       setColor(PRESET_COLORS[0]);
+      setEmoji(undefined);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create task');
@@ -64,6 +68,7 @@ export function AddTaskModal({ isOpen, onClose, onAdd }: AddTaskModalProps) {
     setName('');
     setDescription('');
     setColor(PRESET_COLORS[0]);
+    setEmoji(undefined);
     setError('');
     onClose();
   };
@@ -72,7 +77,7 @@ export function AddTaskModal({ isOpen, onClose, onAdd }: AddTaskModalProps) {
     <Modal isOpen={isOpen} onClose={handleClose} title="Add New Task">
       <form onSubmit={handleSubmit} className="p-6 space-y-5">
         {error && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300 text-sm">
             {error}
           </div>
         )}
@@ -93,8 +98,10 @@ export function AddTaskModal({ isOpen, onClose, onAdd }: AddTaskModalProps) {
           onChange={(e) => setDescription(e.target.value)}
         />
 
+        <EmojiPicker value={emoji} onChange={setEmoji} />
+
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Color
           </label>
           <div className="flex flex-wrap gap-2">
@@ -105,7 +112,7 @@ export function AddTaskModal({ isOpen, onClose, onAdd }: AddTaskModalProps) {
                 onClick={() => setColor(presetColor)}
                 className={`w-8 h-8 rounded-lg transition-all ${
                   color === presetColor
-                    ? 'ring-2 ring-offset-2 ring-gray-400 scale-110'
+                    ? 'ring-2 ring-offset-2 ring-gray-400 dark:ring-gray-500 dark:ring-offset-gray-800 scale-110'
                     : 'hover:scale-105'
                 }`}
                 style={{ backgroundColor: presetColor }}

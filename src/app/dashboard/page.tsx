@@ -65,7 +65,7 @@ export default async function DashboardPage() {
   }));
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 transition-colors">
       <Header />
       
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -73,7 +73,7 @@ export default async function DashboardPage() {
       </main>
 
       {/* Footer */}
-      <footer className="py-4 text-center text-sm text-gray-400">
+      <footer className="py-4 text-center text-sm text-gray-400 dark:text-gray-500">
         <p>© {new Date().getFullYear()} HabitTrack. Build better habits.</p>
       </footer>
     </div>

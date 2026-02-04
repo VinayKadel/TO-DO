@@ -20,7 +20,7 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
     <Fragment>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/50 z-40 animate-fade-in"
+        className="fixed inset-0 bg-black/50 dark:bg-black/70 z-40 animate-fade-in"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -29,7 +29,7 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div
           className={cn(
-            'bg-white rounded-xl shadow-xl w-full max-w-md',
+            'bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md',
             'animate-scale-in transform',
             className
           )}
@@ -39,13 +39,13 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
         >
           {/* Header */}
           {title && (
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 id="modal-title" className="text-lg font-semibold text-gray-900">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+              <h2 id="modal-title" className="text-lg font-semibold text-gray-900 dark:text-white">
                 {title}
               </h2>
               <button
                 onClick={onClose}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                className="p-1.5 rounded-lg text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 aria-label="Close modal"
               >
                 <X className="w-5 h-5" />
@@ -58,7 +58,7 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
             {!title && (
               <button
                 onClick={onClose}
-                className="absolute top-4 right-4 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                className="absolute top-4 right-4 p-1.5 rounded-lg text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 aria-label="Close modal"
               >
                 <X className="w-5 h-5" />

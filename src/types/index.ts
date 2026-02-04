@@ -28,6 +28,7 @@ export interface Task {
   name: string;
   description?: string | null;
   color: string;
+  emoji?: string | null;
   isActive: boolean;
   sortOrder: number;
   createdAt: Date;
@@ -56,12 +57,14 @@ export interface CreateTaskInput {
   name: string;
   description?: string;
   color?: string;
+  emoji?: string;
 }
 
 export interface UpdateTaskInput {
   name?: string;
   description?: string;
   color?: string;
+  emoji?: string;
   isActive?: boolean;
 }
 

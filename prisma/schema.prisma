@@ -1,5 +1,5 @@
 // Prisma schema for To-Do Habit Tracker
-// Uses SQLite for simplicity - can be changed to PostgreSQL for production
+// Uses PostgreSQL for production (Neon) - set DATABASE_URL in environment
 
 generator client {
   provider = "prisma-client-js"
@@ -31,6 +31,7 @@ model Task {
   name        String
   description String?
   color       String    @default("#0ea5e9") // Default primary color
+  emoji       String?   // Optional emoji icon for the task
   isActive    Boolean   @default(true)
   sortOrder   Int       @default(0) // For custom ordering
   createdAt   DateTime  @default(now())

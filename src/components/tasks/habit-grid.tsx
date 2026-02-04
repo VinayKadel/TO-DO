@@ -1,10 +1,11 @@
 'use client';
 
 // Main habit tracker grid component with drag-and-drop sorting
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Plus, ChevronLeft, ChevronRight, Calendar, GripVertical } from 'lucide-react';
 import { format, addDays, subDays } from 'date-fns';
 import { Button } from '@/components/ui';
+import { DateRangeSelector } from '@/components/ui/date-range-selector';
 import { HabitCheckbox } from './habit-checkbox';
 import { AddTaskModal } from './add-task-modal';
 import { EditTaskModal } from './edit-task-modal';
@@ -21,7 +22,21 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
   const [centerDate, setCenterDate] = useState(new Date());
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [daysToShow] = useState(14);
+  const [daysToShow, setDaysToShow] = useState(14);
+  
+  // Load saved days preference
+  useEffect(() => {
+    const saved = localStorage.getItem('habittrack-days');
+    if (saved) {
+      setDaysToShow(parseInt(saved, 10));
+    }
+  }, []);
+
+  // Save days preference
+  const handleDaysChange = (days: number) => {
+    setDaysToShow(days);
+    localStorage.setItem('habittrack-days', days.toString());
+  };
   
   // Drag and drop state
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
@@ -235,8 +250,8 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Habit Tracker</h1>
-          <p className="text-gray-500 mt-1">Track your daily habits and build consistency</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Habit Tracker</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">Track your daily habits and build consistency</p>
         </div>
         <Button onClick={() => setIsAddModalOpen(true)}>
           <Plus className="w-5 h-5 mr-2" />
@@ -245,19 +260,20 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
       </div>
 
       {/* Date navigation */}
-      <div className="flex items-center justify-between mb-4 bg-white rounded-xl p-3 shadow-sm border border-gray-100">
+      <div className="flex items-center justify-between mb-4 bg-white dark:bg-gray-800 rounded-xl p-3 shadow-sm border border-gray-100 dark:border-gray-700">
         <Button variant="ghost" size="sm" onClick={goToPrevious}>
           <ChevronLeft className="w-5 h-5" />
         </Button>
         
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-700">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
             {format(dateColumns[0]?.date || new Date(), 'MMM d')} - {format(dateColumns[dateColumns.length - 1]?.date || new Date(), 'MMM d, yyyy')}
           </span>
           <Button variant="ghost" size="sm" onClick={goToToday}>
             <Calendar className="w-4 h-4 mr-1" />
             Today
           </Button>
+          <DateRangeSelector value={daysToShow} onChange={handleDaysChange} />
         </div>
         
         <Button variant="ghost" size="sm" onClick={goToNext}>
@@ -266,16 +282,16 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
       </div>
 
       {/* Grid */}
-      <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
           <div 
             className="min-w-max"
             style={{ '--days-count': daysToShow } as React.CSSProperties}
           >
             {/* Header row with dates */}
-            <div className="habit-grid border-b border-gray-100 bg-gray-50">
+            <div className="habit-grid border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
               {/* Empty corner cell */}
-              <div className="p-3 font-medium text-gray-500 text-sm sticky left-0 bg-gray-50 z-10 border-r border-gray-100">
+              <div className="p-3 font-medium text-gray-500 dark:text-gray-400 text-sm sticky left-0 bg-gray-50 dark:bg-gray-900/50 z-10 border-r border-gray-100 dark:border-gray-700">
                 Tasks
               </div>
               
@@ -284,25 +300,25 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
                 <div
                   key={col.dateString}
                   className={cn(
-                    'p-2 text-center border-r border-gray-100 last:border-r-0',
-                    col.isToday && 'bg-primary-50'
+                    'p-2 text-center border-r border-gray-100 dark:border-gray-700 last:border-r-0',
+                    col.isToday && 'bg-primary-50 dark:bg-primary-900/30'
                   )}
                 >
                   <div className={cn(
                     'text-xs font-medium',
-                    col.isToday ? 'text-primary-600' : 'text-gray-400'
+                    col.isToday ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400 dark:text-gray-500'
                   )}>
                     {col.dayName}
                   </div>
                   <div className={cn(
                     'text-sm font-semibold mt-0.5',
-                    col.isToday ? 'text-primary-700' : 'text-gray-700'
+                    col.isToday ? 'text-primary-700 dark:text-primary-300' : 'text-gray-700 dark:text-gray-200'
                   )}>
                     {col.dayNumber}
                   </div>
                   <div className={cn(
                     'text-xs',
-                    col.isToday ? 'text-primary-500' : 'text-gray-400'
+                    col.isToday ? 'text-primary-500 dark:text-primary-400' : 'text-gray-400 dark:text-gray-500'
                   )}>
                     {col.monthName}
                   </div>
@@ -312,11 +328,11 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
 
             {/* Task rows */}
             {tasks.length === 0 ? (
-              <div className="p-12 text-center text-gray-500">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Plus className="w-8 h-8 text-gray-400" />
+              <div className="p-12 text-center text-gray-500 dark:text-gray-400">
+                <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Plus className="w-8 h-8 text-gray-400 dark:text-gray-500" />
                 </div>
-                <p className="font-medium text-gray-700">No tasks yet</p>
+                <p className="font-medium text-gray-700 dark:text-gray-200">No tasks yet</p>
                 <p className="text-sm mt-1">Add your first task to start tracking</p>
               </div>
             ) : (
@@ -332,29 +348,34 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, task.id)}
                   className={cn(
-                    'habit-grid border-b border-gray-100 last:border-b-0 transition-all',
-                    dragOverTaskId === task.id && 'border-t-2 border-t-primary-500 bg-primary-50/50',
+                    'habit-grid border-b border-gray-100 dark:border-gray-700 last:border-b-0 transition-all',
+                    dragOverTaskId === task.id && 'border-t-2 border-t-primary-500 bg-primary-50/50 dark:bg-primary-900/30',
                     draggedTaskId === task.id && 'opacity-50'
                   )}
                 >
                   {/* Task name cell with drag handle */}
                   <div
-                    className="p-3 flex items-center gap-1 sticky left-0 bg-white z-10 border-r border-gray-100 group"
+                    className="p-3 flex items-center gap-1 sticky left-0 bg-white dark:bg-gray-800 z-10 border-r border-gray-100 dark:border-gray-700 group"
                   >
                     {/* Drag handle */}
                     <div 
-                      className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-gray-300 hover:text-gray-500 transition-colors"
+                      className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 transition-colors"
                       title="Drag to reorder"
                     >
                       <GripVertical className="w-4 h-4" />
                     </div>
-                    <div
-                      className="w-3 h-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: task.color }}
-                    />
+                    {/* Emoji or color dot */}
+                    {task.emoji ? (
+                      <span className="text-lg flex-shrink-0">{task.emoji}</span>
+                    ) : (
+                      <div
+                        className="w-3 h-3 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: task.color }}
+                      />
+                    )}
                     <span 
                       onClick={() => setEditingTask(task)}
-                      className="text-sm font-medium text-gray-800 truncate cursor-pointer hover:text-primary-600 transition-colors flex-1"
+                      className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate cursor-pointer hover:text-primary-600 dark:hover:text-primary-400 transition-colors flex-1"
                     >
                       {task.name}
                     </span>
@@ -368,8 +389,8 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
                       <div
                         key={`${task.id}-${col.dateString}`}
                         className={cn(
-                          'p-2 flex items-center justify-center border-r border-gray-100 last:border-r-0',
-                          col.isToday && 'bg-primary-50/30'
+                          'p-2 flex items-center justify-center border-r border-gray-100 dark:border-gray-700 last:border-r-0',
+                          col.isToday && 'bg-primary-50/30 dark:bg-primary-900/20'
                         )}
                       >
                         <HabitCheckbox
