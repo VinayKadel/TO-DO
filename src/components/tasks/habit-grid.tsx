@@ -413,9 +413,9 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
                   {/* Task name cell */}
                   <div
                     onClick={() => setEditingTask(task)}
-                    className="p-3 flex items-center gap-2 sticky left-0 bg-white dark:bg-gray-800 z-10 border-r border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors group"
+                    className="p-3 flex items-center gap-2 sticky left-0 bg-white dark:bg-gray-800 z-10 border-r border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors group min-h-[48px]"
                   >
-                    <GripVertical className="w-4 h-4 text-gray-400 dark:text-gray-500 cursor-grab active:cursor-grabbing flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <GripVertical className="w-4 h-4 text-gray-400 dark:text-gray-500 cursor-grab active:cursor-grabbing flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:block" />
                     {task.emoji ? (
                       <span className="text-base flex-shrink-0">{task.emoji}</span>
                     ) : (
@@ -425,7 +425,9 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
                       />
                     )}
                     <span className={cn(
-                      "text-sm font-medium truncate group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors",
+                      "text-sm font-medium group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors",
+                      "truncate sm:truncate",
+                      "max-sm:whitespace-normal max-sm:break-words max-sm:line-clamp-2",
                       task.isCompleted 
                         ? "text-green-700 dark:text-green-400" 
                         : "text-gray-800 dark:text-gray-200"
