@@ -72,3 +72,8 @@ export async function PUT(request: NextRequest) {
     );
   }
 }
+
+// POST - Also handle POST requests (alias for PUT)
+export async function POST(request: NextRequest) {
+  return PUT(request);
+}
