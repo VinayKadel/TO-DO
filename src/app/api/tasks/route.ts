@@ -118,8 +118,11 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error('[API /api/tasks POST] Error creating task:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : '';
+    console.error('[API /api/tasks POST] Error details:', { message: errorMessage, stack: errorStack });
     return NextResponse.json(
-      { success: false, error: 'Failed to create task' },
+      { success: false, error: `Failed to create task: ${errorMessage}` },
       { status: 500 }
     );
   }
