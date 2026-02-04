@@ -25,31 +25,66 @@ interface DailyNotesProps {
 }
 
 // Parse content into todo items
+// Format: Tasks start with [ ] or [x], continuation lines are indented with 2 spaces
 function parseContent(content: string): TodoItem[] {
   if (!content.trim()) return [];
   
-  const lines = content.split('\n').filter(line => line.trim());
-  return lines.map((line, index) => {
+  const items: TodoItem[] = [];
+  const lines = content.split('\n');
+  let currentItem: TodoItem | null = null;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const checklistMatch = line.match(/^\[([ x])\]\s*(.*)$/);
+    
     if (checklistMatch) {
-      return {
-        id: `todo-${index}-${Date.now()}`,
+      // New task found
+      if (currentItem) {
+        items.push(currentItem);
+      }
+      currentItem = {
+        id: `todo-${i}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         text: checklistMatch[2],
         completed: checklistMatch[1] === 'x',
       };
+    } else if (currentItem && line.startsWith('  ')) {
+      // Continuation line (indented) - append to current task
+      currentItem.text += '\n' + line.substring(2); // Remove the 2-space indent
+    } else if (currentItem && line.trim() === '') {
+      // Empty line within a task - preserve it
+      currentItem.text += '\n';
+    } else if (line.trim()) {
+      // Non-indented, non-checkbox line - treat as new task
+      if (currentItem) {
+        items.push(currentItem);
+      }
+      currentItem = {
+        id: `todo-${i}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        text: line,
+        completed: false,
+      };
     }
-    // Treat any non-checkbox line as an incomplete todo
-    return {
-      id: `todo-${index}-${Date.now()}`,
-      text: line,
-      completed: false,
-    };
-  });
+  }
+  
+  // Don't forget the last item
+  if (currentItem) {
+    items.push(currentItem);
+  }
+  
+  return items;
 }
 
 // Convert todo items to storage format
+// Multi-line tasks have continuation lines indented with 2 spaces
 function serializeItems(items: TodoItem[]): string {
-  return items.map(item => `[${item.completed ? 'x' : ' '}] ${item.text}`).join('\n');
+  return items.map(item => {
+    const checkbox = `[${item.completed ? 'x' : ' '}] `;
+    const lines = item.text.split('\n');
+    // First line gets the checkbox, subsequent lines get 2-space indent
+    return checkbox + lines[0] + (lines.length > 1 
+      ? '\n' + lines.slice(1).map(l => '  ' + l).join('\n')
+      : '');
+  }).join('\n');
 }
 
 export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
