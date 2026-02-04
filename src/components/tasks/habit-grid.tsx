@@ -42,6 +42,8 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
   const dragCounter = useRef(0);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const todayColumnRef = useRef<HTMLDivElement>(null);
 
   // Generate date columns
   const dateColumns = useMemo(
@@ -52,7 +54,35 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
   // Navigate dates
   const goToPrevious = () => setCenterDate(subDays(centerDate, 7));
   const goToNext = () => setCenterDate(addDays(centerDate, 7));
-  const goToToday = () => setCenterDate(new Date());
+  const goToToday = () => {
+    setCenterDate(new Date());
+    // Scroll to today column after state update
+    setTimeout(() => {
+      scrollToToday();
+    }, 100);
+  };
+
+  // Scroll today column to center
+  const scrollToToday = useCallback(() => {
+    if (todayColumnRef.current && scrollContainerRef.current) {
+      const container = scrollContainerRef.current;
+      const todayEl = todayColumnRef.current;
+      const containerWidth = container.clientWidth;
+      const todayLeft = todayEl.offsetLeft;
+      const todayWidth = todayEl.offsetWidth;
+      // Scroll so today is in the center
+      const scrollTo = todayLeft - (containerWidth / 2) + (todayWidth / 2);
+      container.scrollTo({ left: Math.max(0, scrollTo), behavior: 'smooth' });
+    }
+  }, []);
+
+  // Scroll to today on initial load
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      scrollToToday();
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [scrollToToday]);
 
   // Toggle completion
   const handleToggleCompletion = useCallback(async (taskId: string, date: string, completed: boolean) => {
@@ -303,7 +333,7 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
 
       {/* Grid */}
       <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div ref={scrollContainerRef} className="overflow-x-auto">
           <div 
             className="min-w-max"
             style={{ '--days-count': daysToShow } as React.CSSProperties}
@@ -319,6 +349,7 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
               {dateColumns.map((col) => (
                 <div
                   key={col.dateString}
+                  ref={col.isToday ? todayColumnRef : undefined}
                   className={cn(
                     'p-2 text-center border-r border-gray-100 dark:border-gray-700 last:border-r-0',
                     col.isToday && 'bg-primary-50 dark:bg-primary-900/30'

@@ -15,6 +15,11 @@ interface TodoItem {
   completed: boolean;
 }
 
+// Check if text has multiple lines
+function isMultiLine(text: string): boolean {
+  return text.includes('\n');
+}
+
 interface DailyNotesProps {
   initialNotes?: DailyNote[];
 }
@@ -63,7 +68,7 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
   );
   
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const dateKey = format(selectedDate, 'yyyy-MM-dd');
 
@@ -169,12 +174,21 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
     triggerAutoSave(newItems);
   };
 
-  // Handle Enter key in input
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+  // Handle Enter key in input (Shift+Enter for new line, Enter to submit)
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       addTask();
     }
+    // Shift+Enter allows default behavior (new line in textarea)
+  };
+
+  // Auto-resize textarea
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setNewTaskText(e.target.value);
+    // Auto-resize
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
   };
 
   // Navigate dates
@@ -263,28 +277,34 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
 
       {/* Add task input */}
       <div className="mb-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-3">
-        <div className="flex items-center gap-3">
-          <div className="flex-shrink-0 w-6 h-6 rounded-md border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center">
+        <div className="flex items-start gap-3">
+          <div className="flex-shrink-0 w-6 h-6 mt-1 rounded-md border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center">
             <Plus className="w-4 h-4 text-gray-400" />
           </div>
-          <input
+          <textarea
             ref={inputRef}
-            type="text"
             value={newTaskText}
-            onChange={(e) => setNewTaskText(e.target.value)}
+            onChange={handleTextareaChange}
             onKeyDown={handleKeyDown}
-            placeholder={`Add a task for ${isTodaySelected ? 'today' : format(selectedDate, 'EEEE')}...`}
-            className="flex-1 bg-transparent border-none outline-none text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500"
+            placeholder={`Add a task for ${isTodaySelected ? 'today' : format(selectedDate, 'EEEE')}... (Shift+Enter for new line)`}
+            rows={1}
+            className="flex-1 bg-transparent border-none outline-none text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 resize-none min-h-[24px]"
           />
           <Button
             variant="primary"
             size="sm"
             onClick={addTask}
             disabled={!newTaskText.trim()}
+            className="mt-0.5"
           >
             Add
           </Button>
         </div>
+        {newTaskText.includes('\n') && (
+          <div className="text-xs text-gray-400 dark:text-gray-500 mt-2 ml-9">
+            Multi-line task • Press Enter to add
+          </div>
+        )}
       </div>
 
       {/* Tasks list */}
@@ -324,7 +344,7 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
                 >
                 </button>
                 
-                <span className="flex-1 text-gray-800 dark:text-gray-200 font-medium">
+                <span className="flex-1 text-gray-800 dark:text-gray-200 font-medium whitespace-pre-wrap">
                   {item.text}
                 </span>
                 
@@ -363,7 +383,7 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
                       <Check className="w-4 h-4" strokeWidth={3} />
                     </button>
                     
-                    <span className="flex-1 text-gray-400 dark:text-gray-500 line-through">
+                    <span className="flex-1 text-gray-400 dark:text-gray-500 line-through whitespace-pre-wrap">
                       {item.text}
                     </span>
                     
