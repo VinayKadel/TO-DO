@@ -2,113 +2,143 @@
 
 // Daily Notes component - a notepad for each day
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Calendar, Save, FileText, Check } from 'lucide-react';
-import { format, addDays, subDays, isToday, parseISO } from 'date-fns';
+import { format, addDays, subDays, isToday, isSameDay } from 'date-fns';
+import { ChevronLeft, ChevronRight, Calendar, Save, FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui';
+import { formatDateForStorage } from '@/lib/date-utils';
+import { DailyNote } from '@/types';
 import { cn } from '@/lib/utils';
 
-export function DailyNotes() {
+interface DailyNotesProps {
+  initialNotes?: DailyNote[];
+}
+
+export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [content, setContent] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [notes, setNotes] = useState<Record<string, DailyNote>>(
+    // Index initial notes by date
+    initialNotes.reduce((acc, note) => {
+      const dateKey = format(new Date(note.date), 'yyyy-MM-dd');
+      acc[dateKey] = note;
+      return acc;
+    }, {} as Record<string, DailyNote>)
+  );
+  
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const originalContentRef = useRef('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Format date for API
-  const formatDateForAPI = (date: Date) => {
-    return format(date, 'yyyy-MM-dd');
-  };
+  // Get the current date key
+  const dateKey = format(selectedDate, 'yyyy-MM-dd');
 
-  // Fetch note for selected date
-  const fetchNote = useCallback(async () => {
+  // Load note for selected date
+  const loadNote = useCallback(async (date: Date) => {
+    const key = format(date, 'yyyy-MM-dd');
+    
+    // If we already have the note cached, use it
+    if (notes[key]) {
+      setContent(notes[key].content);
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/notes?date=${formatDateForAPI(selectedDate)}`);
+      const response = await fetch(`/api/notes?date=${key}`);
       const result = await response.json();
       
-      if (result.success) {
-        const noteContent = result.data?.content || '';
-        setContent(noteContent);
-        originalContentRef.current = noteContent;
-        setHasUnsavedChanges(false);
+      if (result.success && result.data.length > 0) {
+        const note = result.data[0];
+        setNotes(prev => ({ ...prev, [key]: note }));
+        setContent(note.content);
+      } else {
+        setContent('');
       }
     } catch (error) {
-      console.error('Error fetching note:', error);
+      console.error('Error loading note:', error);
+      setContent('');
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDate]);
+  }, [notes]);
 
   // Load note when date changes
   useEffect(() => {
-    fetchNote();
-  }, [fetchNote]);
+    loadNote(selectedDate);
+  }, [selectedDate, loadNote]);
 
-  // Save note
-  const saveNote = useCallback(async () => {
-    if (!hasUnsavedChanges) return;
-    
+  // Auto-save with debounce
+  const saveNote = useCallback(async (noteContent: string) => {
     setIsSaving(true);
     try {
       const response = await fetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          date: formatDateForAPI(selectedDate),
-          content,
+          date: formatDateForStorage(selectedDate),
+          content: noteContent,
         }),
       });
 
       const result = await response.json();
-      
       if (result.success) {
+        setNotes(prev => ({ ...prev, [dateKey]: result.data }));
         setLastSaved(new Date());
-        originalContentRef.current = content;
-        setHasUnsavedChanges(false);
       }
     } catch (error) {
       console.error('Error saving note:', error);
     } finally {
       setIsSaving(false);
     }
-  }, [selectedDate, content, hasUnsavedChanges]);
+  }, [selectedDate, dateKey]);
 
-  // Auto-save after 2 seconds of inactivity
-  useEffect(() => {
-    if (hasUnsavedChanges) {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-      saveTimeoutRef.current = setTimeout(() => {
-        saveNote();
-      }, 2000);
+  // Handle content change with debounced save
+  const handleContentChange = (newContent: string) => {
+    setContent(newContent);
+    
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
+    
+    // Set new timeout for auto-save (1.5 seconds after typing stops)
+    saveTimeoutRef.current = setTimeout(() => {
+      saveNote(newContent);
+    }, 1500);
+  };
 
+  // Manual save
+  const handleManualSave = () => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveNote(content);
+  };
+
+  // Navigate dates
+  const goToPrevious = () => setSelectedDate(subDays(selectedDate, 1));
+  const goToNext = () => setSelectedDate(addDays(selectedDate, 1));
+  const goToToday = () => setSelectedDate(new Date());
+
+  // Focus textarea on load
+  useEffect(() => {
+    if (textareaRef.current && !isLoading) {
+      textareaRef.current.focus();
+    }
+  }, [isLoading, selectedDate]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [content, hasUnsavedChanges, saveNote]);
+  }, []);
 
-  // Handle content change
-  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newContent = e.target.value;
-    setContent(newContent);
-    setHasUnsavedChanges(newContent !== originalContentRef.current);
-  };
-
-  // Navigation
-  const goToPrevious = () => setSelectedDate(subDays(selectedDate, 1));
-  const goToNext = () => setSelectedDate(addDays(selectedDate, 1));
-  const goToToday = () => setSelectedDate(new Date());
-
-  // Get display date
-  const displayDate = format(selectedDate, 'EEEE, MMMM d, yyyy');
-  const isCurrentDay = isToday(selectedDate);
+  const isTodaySelected = isToday(selectedDate);
 
   return (
     <div className="flex flex-col h-full">
@@ -118,32 +148,23 @@ export function DailyNotes() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Daily Notes</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">Write your daily tasks and notes</p>
         </div>
-        
-        {/* Save status */}
         <div className="flex items-center gap-2">
-          {isSaving ? (
-            <span className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
-              <Save className="w-4 h-4 animate-pulse" />
-              Saving...
+          {lastSaved && (
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              Saved {format(lastSaved, 'h:mm a')}
             </span>
-          ) : hasUnsavedChanges ? (
-            <span className="text-sm text-amber-500 dark:text-amber-400 flex items-center gap-1">
-              <Save className="w-4 h-4" />
-              Unsaved changes
-            </span>
-          ) : lastSaved ? (
-            <span className="text-sm text-green-500 dark:text-green-400 flex items-center gap-1">
-              <Check className="w-4 h-4" />
-              Saved
-            </span>
-          ) : null}
-          
+          )}
           <Button 
-            onClick={saveNote} 
-            disabled={!hasUnsavedChanges || isSaving}
-            size="sm"
+            variant="secondary" 
+            size="sm" 
+            onClick={handleManualSave}
+            disabled={isSaving}
           >
-            <Save className="w-4 h-4 mr-1" />
+            {isSaving ? (
+              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4 mr-1" />
+            )}
             Save
           </Button>
         </div>
@@ -156,16 +177,21 @@ export function DailyNotes() {
         </Button>
         
         <div className="flex items-center gap-2">
-          <span className={cn(
-            "text-sm font-medium",
-            isCurrentDay 
-              ? "text-primary-600 dark:text-primary-400" 
-              : "text-gray-700 dark:text-gray-200"
-          )}>
-            {displayDate}
-            {isCurrentDay && <span className="ml-2 text-xs bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300 px-2 py-0.5 rounded-full">Today</span>}
-          </span>
-          {!isCurrentDay && (
+          <div className="text-center">
+            <div className={cn(
+              'text-lg font-semibold',
+              isTodaySelected ? 'text-primary-600 dark:text-primary-400' : 'text-gray-800 dark:text-gray-100'
+            )}>
+              {format(selectedDate, 'EEEE')}
+            </div>
+            <div className={cn(
+              'text-sm',
+              isTodaySelected ? 'text-primary-500 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'
+            )}>
+              {format(selectedDate, 'MMMM d, yyyy')}
+            </div>
+          </div>
+          {!isTodaySelected && (
             <Button variant="ghost" size="sm" onClick={goToToday}>
               <Calendar className="w-4 h-4 mr-1" />
               Today
@@ -178,29 +204,33 @@ export function DailyNotes() {
         </Button>
       </div>
 
-      {/* Notepad */}
+      {/* Note editor */}
       <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col">
         {isLoading ? (
-          <div className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
-            <div className="animate-pulse flex flex-col items-center gap-2">
-              <FileText className="w-8 h-8" />
-              <span>Loading notes...</span>
-            </div>
+          <div className="flex-1 flex items-center justify-center">
+            <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
           </div>
         ) : (
           <>
-            {/* Toolbar/Header */}
-            <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                💡 Tip: Your notes auto-save after you stop typing
+            {/* Editor header */}
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+              <FileText className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+              <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                {isTodaySelected ? "Today's Notes" : `Notes for ${format(selectedDate, 'MMM d')}`}
               </span>
+              {notes[dateKey] && (
+                <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
+                  Last updated {format(new Date(notes[dateKey].updatedAt), 'MMM d, h:mm a')}
+                </span>
+              )}
             </div>
             
-            {/* Text area */}
+            {/* Textarea */}
             <textarea
+              ref={textareaRef}
               value={content}
-              onChange={handleContentChange}
-              placeholder={`What do you need to do on ${format(selectedDate, 'MMMM d')}?
+              onChange={(e) => handleContentChange(e.target.value)}
+              placeholder={`What do you need to do ${isTodaySelected ? 'today' : 'on ' + format(selectedDate, 'EEEE')}?
 
 • Task 1
 • Task 2
@@ -209,15 +239,21 @@ export function DailyNotes() {
 Notes:
 ...`}
               className={cn(
-                "flex-1 w-full p-4 resize-none focus:outline-none",
-                "bg-transparent text-gray-900 dark:text-gray-100",
-                "placeholder-gray-400 dark:placeholder-gray-500",
-                "font-mono text-sm leading-relaxed"
+                'flex-1 w-full p-4 resize-none',
+                'bg-transparent text-gray-800 dark:text-gray-100',
+                'placeholder-gray-400 dark:placeholder-gray-500',
+                'focus:outline-none',
+                'font-mono text-sm leading-relaxed'
               )}
-              spellCheck
+              spellCheck="true"
             />
           </>
         )}
+      </div>
+
+      {/* Quick tips */}
+      <div className="mt-4 text-center text-xs text-gray-400 dark:text-gray-500">
+        Auto-saves as you type • Use bullet points (•) or dashes (-) for lists
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-// Dashboard page - main habit tracking view
+// Dashboard page - main habit tracking and notes view
 import { redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
@@ -9,7 +9,7 @@ import { subDays, addDays, startOfDay } from 'date-fns';
 
 export const metadata = {
   title: 'Dashboard - HabitTrack',
-  description: 'Track your daily habits with HabitTrack',
+  description: 'Track your daily habits and notes with HabitTrack',
 };
 
 // Force dynamic rendering for authenticated pages
@@ -27,29 +27,45 @@ export default async function DashboardPage() {
   const startDate = startOfDay(subDays(today, 30));
   const endDate = startOfDay(addDays(today, 30));
 
-  const tasks = await prisma.task.findMany({
-    where: {
-      userId: session.user.id,
-      isActive: true,
-    },
-    include: {
-      completions: {
-        where: {
-          date: {
-            gte: startDate,
-            lte: endDate,
+  const [tasks, notes] = await Promise.all([
+    // Fetch tasks
+    prisma.task.findMany({
+      where: {
+        userId: session.user.id,
+        isActive: true,
+      },
+      include: {
+        completions: {
+          where: {
+            date: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+          orderBy: {
+            date: 'asc',
           },
         },
-        orderBy: {
-          date: 'asc',
+      },
+      orderBy: [
+        { sortOrder: 'asc' },
+        { createdAt: 'asc' },
+      ],
+    }),
+    // Fetch recent notes (last 30 days)
+    prisma.dailyNote.findMany({
+      where: {
+        userId: session.user.id,
+        date: {
+          gte: startDate,
+          lte: endDate,
         },
       },
-    },
-    orderBy: [
-      { sortOrder: 'asc' },
-      { createdAt: 'asc' },
-    ],
-  });
+      orderBy: {
+        date: 'desc',
+      },
+    }),
+  ]);
 
   // Serialize dates for client component
   const serializedTasks = tasks.map((task) => ({
@@ -64,12 +80,19 @@ export default async function DashboardPage() {
     })),
   }));
 
+  const serializedNotes = notes.map((note) => ({
+    ...note,
+    date: note.date,
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt,
+  }));
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 transition-colors">
       <Header />
       
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <DashboardContent initialTasks={serializedTasks} />
+        <DashboardContent tasks={serializedTasks} notes={serializedNotes} />
       </main>
 
       {/* Footer */}

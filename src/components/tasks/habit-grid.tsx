@@ -23,7 +23,7 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [daysToShow, setDaysToShow] = useState(14);
-  
+
   // Load saved days preference
   useEffect(() => {
     const saved = localStorage.getItem('habittrack-days');
@@ -37,7 +37,7 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
     setDaysToShow(days);
     localStorage.setItem('habittrack-days', days.toString());
   };
-  
+
   // Drag and drop state
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
@@ -161,21 +161,18 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
     setTasks((prev) => prev.filter((task) => task.id !== taskId));
   };
 
-  // Drag and drop handlers
+  // Drag handlers
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     setDraggedTaskId(taskId);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', taskId);
-    // Add a slight delay for visual feedback
-    setTimeout(() => {
-      const element = document.querySelector(`[data-task-id="${taskId}"]`);
-      element?.classList.add('opacity-50');
-    }, 0);
+    const element = e.currentTarget as HTMLElement;
+    element.style.opacity = '0.5';
   };
 
-  const handleDragEnd = () => {
-    const element = document.querySelector(`[data-task-id="${draggedTaskId}"]`);
-    element?.classList.remove('opacity-50');
+  const handleDragEnd = (e: React.DragEvent) => {
+    const element = e.currentTarget as HTMLElement;
+    element.style.opacity = '1';
     setDraggedTaskId(null);
     setDragOverTaskId(null);
     dragCounter.current = 0;
@@ -189,7 +186,8 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
     }
   };
 
-  const handleDragLeave = () => {
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
     dragCounter.current--;
     if (dragCounter.current === 0) {
       setDragOverTaskId(null);
@@ -206,42 +204,43 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
     dragCounter.current = 0;
     
     if (!draggedTaskId || draggedTaskId === targetTaskId) {
+      setDraggedTaskId(null);
       setDragOverTaskId(null);
       return;
     }
 
-    // Reorder tasks locally
-    const draggedIndex = tasks.findIndex((t) => t.id === draggedTaskId);
-    const targetIndex = tasks.findIndex((t) => t.id === targetTaskId);
-    
+    const draggedIndex = tasks.findIndex(t => t.id === draggedTaskId);
+    const targetIndex = tasks.findIndex(t => t.id === targetTaskId);
+
     if (draggedIndex === -1 || targetIndex === -1) return;
 
+    // Reorder tasks locally
     const newTasks = [...tasks];
     const [draggedTask] = newTasks.splice(draggedIndex, 1);
     newTasks.splice(targetIndex, 0, draggedTask);
-    
-    setTasks(newTasks);
+
+    // Update sort orders
+    const updatedTasks = newTasks.map((task, index) => ({
+      ...task,
+      sortOrder: index,
+    }));
+
+    setTasks(updatedTasks);
+    setDraggedTaskId(null);
     setDragOverTaskId(null);
 
-    // Save new order to server
+    // Save to server
     try {
-      const response = await fetch('/api/tasks/reorder', {
-        method: 'PUT',
+      await fetch('/api/tasks/reorder', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          taskIds: newTasks.map((t) => t.id),
+          taskIds: updatedTasks.map(t => t.id),
         }),
       });
-
-      if (!response.ok) {
-        // Revert on error
-        setTasks(tasks);
-        console.error('Failed to save task order');
-      }
     } catch (error) {
-      // Revert on error
-      setTasks(tasks);
-      console.error('Error saving task order:', error);
+      console.error('Failed to save task order:', error);
+      setTasks(tasks); // Revert on error
     }
   };
 
@@ -253,10 +252,13 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Habit Tracker</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">Track your daily habits and build consistency</p>
         </div>
-        <Button onClick={() => setIsAddModalOpen(true)}>
-          <Plus className="w-5 h-5 mr-2" />
-          Add Task
-        </Button>
+        <div className="flex items-center gap-3">
+          <DateRangeSelector value={daysToShow} onChange={handleDaysChange} />
+          <Button onClick={() => setIsAddModalOpen(true)}>
+            <Plus className="w-5 h-5 mr-2" />
+            Add Task
+          </Button>
+        </div>
       </div>
 
       {/* Date navigation */}
@@ -266,14 +268,13 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
         </Button>
         
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
             {format(dateColumns[0]?.date || new Date(), 'MMM d')} - {format(dateColumns[dateColumns.length - 1]?.date || new Date(), 'MMM d, yyyy')}
           </span>
           <Button variant="ghost" size="sm" onClick={goToToday}>
             <Calendar className="w-4 h-4 mr-1" />
             Today
           </Button>
-          <DateRangeSelector value={daysToShow} onChange={handleDaysChange} />
         </div>
         
         <Button variant="ghost" size="sm" onClick={goToNext}>
@@ -289,9 +290,9 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
             style={{ '--days-count': daysToShow } as React.CSSProperties}
           >
             {/* Header row with dates */}
-            <div className="habit-grid border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+            <div className="habit-grid border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
               {/* Empty corner cell */}
-              <div className="p-3 font-medium text-gray-500 dark:text-gray-400 text-sm sticky left-0 bg-gray-50 dark:bg-gray-900/50 z-10 border-r border-gray-100 dark:border-gray-700">
+              <div className="p-3 font-medium text-gray-500 dark:text-gray-400 text-sm sticky left-0 bg-gray-50 dark:bg-gray-900 z-10 border-r border-gray-100 dark:border-gray-700">
                 Tasks
               </div>
               
@@ -312,7 +313,7 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
                   </div>
                   <div className={cn(
                     'text-sm font-semibold mt-0.5',
-                    col.isToday ? 'text-primary-700 dark:text-primary-300' : 'text-gray-700 dark:text-gray-200'
+                    col.isToday ? 'text-primary-700 dark:text-primary-300' : 'text-gray-700 dark:text-gray-300'
                   )}>
                     {col.dayNumber}
                   </div>
@@ -328,18 +329,14 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
 
             {/* Task rows */}
             {tasks.length === 0 ? (
-              <div className="p-12 text-center text-gray-500 dark:text-gray-400">
-                <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Plus className="w-8 h-8 text-gray-400 dark:text-gray-500" />
-                </div>
-                <p className="font-medium text-gray-700 dark:text-gray-200">No tasks yet</p>
-                <p className="text-sm mt-1">Add your first task to start tracking</p>
+              <div className="p-12 text-center">
+                <p className="font-medium text-gray-700 dark:text-gray-300">No tasks yet</p>
+                <p className="text-sm mt-1 text-gray-500 dark:text-gray-400">Add your first task to start tracking</p>
               </div>
             ) : (
               tasks.map((task) => (
                 <div 
                   key={task.id} 
-                  data-task-id={task.id}
                   draggable
                   onDragStart={(e) => handleDragStart(e, task.id)}
                   onDragEnd={handleDragEnd}
@@ -348,35 +345,26 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, task.id)}
                   className={cn(
-                    'habit-grid border-b border-gray-100 dark:border-gray-700 last:border-b-0 transition-all',
-                    dragOverTaskId === task.id && 'border-t-2 border-t-primary-500 bg-primary-50/50 dark:bg-primary-900/30',
+                    'habit-grid border-b border-gray-100 dark:border-gray-700 last:border-b-0 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors',
+                    dragOverTaskId === task.id && 'bg-primary-50 dark:bg-primary-900/30 border-primary-300 dark:border-primary-600',
                     draggedTaskId === task.id && 'opacity-50'
                   )}
                 >
-                  {/* Task name cell with drag handle */}
+                  {/* Task name cell */}
                   <div
-                    className="p-3 flex items-center gap-1 sticky left-0 bg-white dark:bg-gray-800 z-10 border-r border-gray-100 dark:border-gray-700 group"
+                    onClick={() => setEditingTask(task)}
+                    className="p-3 flex items-center gap-2 sticky left-0 bg-white dark:bg-gray-800 z-10 border-r border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors group"
                   >
-                    {/* Drag handle */}
-                    <div 
-                      className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 transition-colors"
-                      title="Drag to reorder"
-                    >
-                      <GripVertical className="w-4 h-4" />
-                    </div>
-                    {/* Emoji or color dot */}
+                    <GripVertical className="w-4 h-4 text-gray-400 dark:text-gray-500 cursor-grab active:cursor-grabbing flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                     {task.emoji ? (
-                      <span className="text-lg flex-shrink-0">{task.emoji}</span>
+                      <span className="text-base flex-shrink-0">{task.emoji}</span>
                     ) : (
                       <div
                         className="w-3 h-3 rounded-full flex-shrink-0"
                         style={{ backgroundColor: task.color }}
                       />
                     )}
-                    <span 
-                      onClick={() => setEditingTask(task)}
-                      className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate cursor-pointer hover:text-primary-600 dark:hover:text-primary-400 transition-colors flex-1"
-                    >
+                    <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
                       {task.name}
                     </span>
                   </div>

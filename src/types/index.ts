@@ -98,7 +98,11 @@ export interface DailyNote {
   userId: string;
 }
 
-export interface SaveDailyNoteInput {
+export interface CreateDailyNoteInput {
   date: string; // ISO date string
+  content: string;
+}
+
+export interface UpdateDailyNoteInput {
   content: string;
 }

@@ -1,51 +1,43 @@
 'use client';
 
-// Dashboard content with tab switching between Habits and Notes
+// Dashboard content with tab switching
 import { useState, useEffect } from 'react';
 import { CheckSquare, FileText } from 'lucide-react';
 import { HabitGrid } from '@/components/tasks';
 import { DailyNotes } from '@/components/notes';
-import { TabSwitcher, TabValue } from '@/components/ui/tab-switcher';
-import { TaskWithCompletions } from '@/types';
+import { TabSwitcher } from '@/components/ui/tab-switcher';
+import { TaskWithCompletions, DailyNote } from '@/types';
 
 interface DashboardContentProps {
-  initialTasks: TaskWithCompletions[];
+  tasks: TaskWithCompletions[];
+  notes: DailyNote[];
 }
 
 const TABS = [
-  {
-    value: 'habits' as const,
-    label: 'Habit Tracker',
-    icon: <CheckSquare className="w-4 h-4" />,
-  },
-  {
-    value: 'notes' as const,
-    label: 'Daily Notes',
-    icon: <FileText className="w-4 h-4" />,
-  },
+  { id: 'habits', label: 'Habit Tracker', icon: <CheckSquare className="w-4 h-4" /> },
+  { id: 'notes', label: 'Daily Notes', icon: <FileText className="w-4 h-4" /> },
 ];
 
-export function DashboardContent({ initialTasks }: DashboardContentProps) {
-  const [activeTab, setActiveTab] = useState<TabValue>('habits');
+export function DashboardContent({ tasks, notes }: DashboardContentProps) {
+  const [activeTab, setActiveTab] = useState('habits');
 
-  // Load saved tab preference
+  // Persist tab preference
   useEffect(() => {
-    const saved = localStorage.getItem('habittrack-active-tab');
-    if (saved === 'habits' || saved === 'notes') {
+    const saved = localStorage.getItem('dashboard-tab');
+    if (saved && TABS.find(t => t.id === saved)) {
       setActiveTab(saved);
     }
   }, []);
 
-  // Save tab preference
-  const handleTabChange = (tab: TabValue) => {
-    setActiveTab(tab);
-    localStorage.setItem('habittrack-active-tab', tab);
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId);
+    localStorage.setItem('dashboard-tab', tabId);
   };
 
   return (
     <div className="flex flex-col h-full">
-      {/* Tab Switcher */}
-      <div className="mb-6">
+      {/* Tab switcher */}
+      <div className="flex justify-center mb-6">
         <TabSwitcher
           tabs={TABS}
           activeTab={activeTab}
@@ -55,11 +47,8 @@ export function DashboardContent({ initialTasks }: DashboardContentProps) {
 
       {/* Content */}
       <div className="flex-1">
-        {activeTab === 'habits' ? (
-          <HabitGrid initialTasks={initialTasks} />
-        ) : (
-          <DailyNotes />
-        )}
+        {activeTab === 'habits' && <HabitGrid initialTasks={tasks} />}
+        {activeTab === 'notes' && <DailyNotes initialNotes={notes} />}
       </div>
     </div>
   );

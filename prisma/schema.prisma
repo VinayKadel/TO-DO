@@ -66,11 +66,11 @@ model TaskCompletion {
   @@map("task_completions")
 }
 
-// DailyNote model - stores daily notes/todos for each day
+// DailyNote model - stores daily notes/to-do lists per date
 model DailyNote {
   id        String   @id @default(cuid())
-  date      DateTime @db.Date // The date for this note
-  content   String   @db.Text // The note content (markdown/plain text)
+  date      DateTime // The date for this note (stored as date only at noon UTC)
+  content   String   @db.Text // The note content (supports markdown/plain text)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   

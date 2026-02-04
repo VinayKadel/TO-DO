@@ -13,8 +13,11 @@ export const metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: { registered?: string };
+  searchParams: Promise<{ registered?: string }>;
 }) {
+  // Await searchParams for Next.js 16
+  const resolvedSearchParams = await searchParams;
+  
   // Redirect if already logged in
   const session = await getServerSession(authOptions);
   if (session) {
@@ -38,7 +41,7 @@ export default async function LoginPage({
       </div>
 
       {/* Success message after registration */}
-      {searchParams.registered && (
+      {resolvedSearchParams.registered && (
         <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg text-green-700 dark:text-green-300 text-sm max-w-md w-full relative">
           Account created successfully! Please sign in.
         </div>
