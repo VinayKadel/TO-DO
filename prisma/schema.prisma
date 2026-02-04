@@ -21,6 +21,7 @@ model User {
   
   // Relations
   tasks         Task[]
+  dailyNotes    DailyNote[]
   
   @@map("users")
 }
@@ -63,4 +64,23 @@ model TaskCompletion {
   @@index([taskId])
   @@index([date])
   @@map("task_completions")
+}
+
+// DailyNote model - stores daily notes/todos for each day
+model DailyNote {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date // The date for this note
+  content   String   @db.Text // The note content (markdown/plain text)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Ensure only one note per user per day
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+  @@map("daily_notes")
 }

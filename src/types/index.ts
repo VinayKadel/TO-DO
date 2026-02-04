@@ -87,3 +87,18 @@ export interface DateColumn {
   monthName: string;
   isToday: boolean;
 }
+
+// Daily Note types
+export interface DailyNote {
+  id: string;
+  date: Date;
+  content: string;
+  createdAt: Date;
+  updatedAt: Date;
+  userId: string;
+}
+
+export interface SaveDailyNoteInput {
+  date: string; // ISO date string
+  content: string;
+}

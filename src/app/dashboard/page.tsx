@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { Header } from '@/components/layout';
-import { HabitGrid } from '@/components/tasks';
+import { DashboardContent } from '@/components/dashboard';
 import { subDays, addDays, startOfDay } from 'date-fns';
 
 export const metadata = {
@@ -69,7 +69,7 @@ export default async function DashboardPage() {
       <Header />
       
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <HabitGrid initialTasks={serializedTasks} />
+        <DashboardContent initialTasks={serializedTasks} />
       </main>
 
       {/* Footer */}
