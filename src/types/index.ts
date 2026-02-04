@@ -29,6 +29,7 @@ export interface Task {
   description?: string | null;
   color: string;
   isActive: boolean;
+  sortOrder: number;
   createdAt: Date;
   updatedAt: Date;
   userId: string;

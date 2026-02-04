@@ -45,9 +45,10 @@ export default async function DashboardPage() {
         },
       },
     },
-    orderBy: {
-      createdAt: 'asc',
-    },
+    orderBy: [
+      { sortOrder: 'asc' },
+      { createdAt: 'asc' },
+    ],
   });
 
   // Serialize dates for client component

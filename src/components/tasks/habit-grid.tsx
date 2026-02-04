@@ -1,9 +1,9 @@
 'use client';
 
-// Main habit tracker grid component
-import { useState, useMemo, useCallback } from 'react';
-import { Plus, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
-import { format, addDays, subDays, isToday } from 'date-fns';
+// Main habit tracker grid component with drag-and-drop sorting
+import { useState, useMemo, useCallback, useRef } from 'react';
+import { Plus, ChevronLeft, ChevronRight, Calendar, GripVertical } from 'lucide-react';
+import { format, addDays, subDays } from 'date-fns';
 import { Button } from '@/components/ui';
 import { HabitCheckbox } from './habit-checkbox';
 import { AddTaskModal } from './add-task-modal';
@@ -22,6 +22,11 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [daysToShow] = useState(14);
+  
+  // Drag and drop state
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
+  const dragCounter = useRef(0);
 
   // Generate date columns
   const dateColumns = useMemo(
@@ -141,6 +146,90 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
     setTasks((prev) => prev.filter((task) => task.id !== taskId));
   };
 
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    setDraggedTaskId(taskId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', taskId);
+    // Add a slight delay for visual feedback
+    setTimeout(() => {
+      const element = document.querySelector(`[data-task-id="${taskId}"]`);
+      element?.classList.add('opacity-50');
+    }, 0);
+  };
+
+  const handleDragEnd = () => {
+    const element = document.querySelector(`[data-task-id="${draggedTaskId}"]`);
+    element?.classList.remove('opacity-50');
+    setDraggedTaskId(null);
+    setDragOverTaskId(null);
+    dragCounter.current = 0;
+  };
+
+  const handleDragEnter = (e: React.DragEvent, taskId: string) => {
+    e.preventDefault();
+    dragCounter.current++;
+    if (taskId !== draggedTaskId) {
+      setDragOverTaskId(taskId);
+    }
+  };
+
+  const handleDragLeave = () => {
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setDragOverTaskId(null);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetTaskId: string) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    
+    if (!draggedTaskId || draggedTaskId === targetTaskId) {
+      setDragOverTaskId(null);
+      return;
+    }
+
+    // Reorder tasks locally
+    const draggedIndex = tasks.findIndex((t) => t.id === draggedTaskId);
+    const targetIndex = tasks.findIndex((t) => t.id === targetTaskId);
+    
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    const newTasks = [...tasks];
+    const [draggedTask] = newTasks.splice(draggedIndex, 1);
+    newTasks.splice(targetIndex, 0, draggedTask);
+    
+    setTasks(newTasks);
+    setDragOverTaskId(null);
+
+    // Save new order to server
+    try {
+      const response = await fetch('/api/tasks/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskIds: newTasks.map((t) => t.id),
+        }),
+      });
+
+      if (!response.ok) {
+        // Revert on error
+        setTasks(tasks);
+        console.error('Failed to save task order');
+      }
+    } catch (error) {
+      // Revert on error
+      setTasks(tasks);
+      console.error('Error saving task order:', error);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -232,17 +321,41 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
               </div>
             ) : (
               tasks.map((task) => (
-                <div key={task.id} className="habit-grid border-b border-gray-100 last:border-b-0 hover:bg-gray-50/50 transition-colors">
-                  {/* Task name cell */}
+                <div 
+                  key={task.id} 
+                  data-task-id={task.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, task.id)}
+                  onDragEnd={handleDragEnd}
+                  onDragEnter={(e) => handleDragEnter(e, task.id)}
+                  onDragLeave={handleDragLeave}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, task.id)}
+                  className={cn(
+                    'habit-grid border-b border-gray-100 last:border-b-0 transition-all',
+                    dragOverTaskId === task.id && 'border-t-2 border-t-primary-500 bg-primary-50/50',
+                    draggedTaskId === task.id && 'opacity-50'
+                  )}
+                >
+                  {/* Task name cell with drag handle */}
                   <div
-                    onClick={() => setEditingTask(task)}
-                    className="p-3 flex items-center gap-2 sticky left-0 bg-white z-10 border-r border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors group"
+                    className="p-3 flex items-center gap-1 sticky left-0 bg-white z-10 border-r border-gray-100 group"
                   >
+                    {/* Drag handle */}
+                    <div 
+                      className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-gray-300 hover:text-gray-500 transition-colors"
+                      title="Drag to reorder"
+                    >
+                      <GripVertical className="w-4 h-4" />
+                    </div>
                     <div
                       className="w-3 h-3 rounded-full flex-shrink-0"
                       style={{ backgroundColor: task.color }}
                     />
-                    <span className="text-sm font-medium text-gray-800 truncate group-hover:text-primary-600 transition-colors">
+                    <span 
+                      onClick={() => setEditingTask(task)}
+                      className="text-sm font-medium text-gray-800 truncate cursor-pointer hover:text-primary-600 transition-colors flex-1"
+                    >
                       {task.name}
                     </span>
                   </div>

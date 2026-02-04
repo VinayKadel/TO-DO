@@ -45,9 +45,10 @@ export async function GET(request: NextRequest) {
           },
         } : true,
       },
-      orderBy: {
-        createdAt: 'asc',
-      },
+      orderBy: [
+        { sortOrder: 'asc' },
+        { createdAt: 'asc' },
+      ],
     });
 
     return NextResponse.json({ success: true, data: tasks });
