@@ -379,7 +379,7 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
 
             {/* Task rows */}
             {tasks.length === 0 ? (
-              <div className="p-12 text-center">
+              <div className="p-12 text-center flex flex-col items-center justify-center">
                 <p className="font-medium text-gray-700 dark:text-gray-300">No tasks yet</p>
                 <p className="text-sm mt-1 text-gray-500 dark:text-gray-400">Add your first task to start tracking</p>
               </div>
