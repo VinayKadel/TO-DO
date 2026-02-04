@@ -43,13 +43,19 @@ export function AddTaskModal({ isOpen, onClose, onAdd }: AddTaskModalProps) {
 
     setIsLoading(true);
 
+    const taskData = {
+      name: name.trim(),
+      description: description.trim() || undefined,
+      color,
+      emoji,
+    };
+    
+    console.log('[AddTaskModal] Submitting task:', taskData);
+
     try {
-      await onAdd({
-        name: name.trim(),
-        description: description.trim() || undefined,
-        color,
-        emoji,
-      });
+      await onAdd(taskData);
+      
+      console.log('[AddTaskModal] Task added successfully');
       
       // Reset form and close
       setName('');
@@ -58,7 +64,10 @@ export function AddTaskModal({ isOpen, onClose, onAdd }: AddTaskModalProps) {
       setEmoji(undefined);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create task');
+      console.error('[AddTaskModal] Error adding task:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create task';
+      console.error('[AddTaskModal] Error message:', errorMessage);
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

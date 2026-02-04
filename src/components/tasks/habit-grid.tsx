@@ -113,19 +113,38 @@ export function HabitGrid({ initialTasks }: HabitGridProps) {
 
   // Add task
   const handleAddTask = async (data: CreateTaskInput) => {
-    const response = await fetch('/api/tasks', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+    console.log('[HabitGrid] Adding task with data:', data);
+    
+    try {
+      const response = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to create task');
+      console.log('[HabitGrid] Response status:', response.status);
+      const responseText = await response.text();
+      console.log('[HabitGrid] Response body:', responseText);
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to create task';
+        try {
+          const errorData = JSON.parse(responseText);
+          errorMessage = errorData.error || errorMessage;
+          console.error('[HabitGrid] API Error:', errorData);
+        } catch (parseError) {
+          console.error('[HabitGrid] Failed to parse error response:', responseText);
+        }
+        throw new Error(errorMessage);
+      }
+
+      const result = JSON.parse(responseText);
+      console.log('[HabitGrid] Task created successfully:', result.data);
+      setTasks((prev) => [...prev, result.data]);
+    } catch (error) {
+      console.error('[HabitGrid] Error adding task:', error);
+      throw error;
     }
-
-    const result = await response.json();
-    setTasks((prev) => [...prev, result.data]);
   };
 
   // Update task

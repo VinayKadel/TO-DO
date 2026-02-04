@@ -64,10 +64,15 @@ export async function GET(request: NextRequest) {
 
 // POST - Create a new task
 export async function POST(request: NextRequest) {
+  console.log('[API /api/tasks POST] Request received');
+  
   try {
     // Check authentication
     const session = await getServerSession(authOptions);
+    console.log('[API /api/tasks POST] Session:', session?.user?.id ? 'authenticated' : 'not authenticated');
+    
     if (!session?.user?.id) {
+      console.log('[API /api/tasks POST] Unauthorized - no session');
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
@@ -76,9 +81,12 @@ export async function POST(request: NextRequest) {
 
     // Parse and validate request body
     const body = await request.json();
+    console.log('[API /api/tasks POST] Request body:', JSON.stringify(body));
+    
     const validationResult = createTaskSchema.safeParse(body);
     
     if (!validationResult.success) {
+      console.log('[API /api/tasks POST] Validation failed:', validationResult.error.errors);
       return NextResponse.json(
         { success: false, error: validationResult.error.errors[0].message },
         { status: 400 }
@@ -86,6 +94,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { name, description, color, emoji } = validationResult.data;
+    console.log('[API /api/tasks POST] Creating task:', { name, description, color, emoji, userId: session.user.id });
 
     // Create task
     const task = await prisma.task.create({
@@ -101,12 +110,14 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    console.log('[API /api/tasks POST] Task created:', task.id);
+    
     return NextResponse.json(
       { success: true, data: task },
       { status: 201 }
     );
   } catch (error) {
-    console.error('Error creating task:', error);
+    console.error('[API /api/tasks POST] Error creating task:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to create task' },
       { status: 500 }
