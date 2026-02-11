@@ -204,11 +204,11 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
 
   // ─── Notification scheduler — checks every 15s ──────────────────
   useEffect(() => {
-    if (notifPermission !== 'granted') return;
-
     const checkReminders = () => {
       const now = new Date();
-      const currentTime = format(now, 'HH:mm');
+      const currentHour = now.getHours();
+      const currentMin = now.getMinutes();
+      const currentTotalMins = currentHour * 60 + currentMin;
       const todayKey = format(now, 'yyyy-MM-dd');
 
       // Also check the currently loaded items for the selected date (if it's today)
@@ -219,24 +219,39 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
       const finalItems = (dateKey === todayKey) ? items : itemsToCheck;
 
       const itemsToFire: string[] = [];
+      const itemsToAutoClear: string[] = [];
+
       finalItems.forEach((item) => {
+        if (!item.reminderTime || item.completed) return;
+
+        const [rh, rm] = item.reminderTime.split(':').map(Number);
+        const reminderTotalMins = rh * 60 + rm;
+
+        // Fire notification at exact time
         if (
-          item.reminderTime &&
-          !item.completed &&
-          item.reminderTime === currentTime &&
+          item.reminderTime === format(now, 'HH:mm') &&
           !firedRemindersRef.current.has(`${todayKey}-${item.id}-${item.reminderTime}`)
         ) {
           firedRemindersRef.current.add(`${todayKey}-${item.id}-${item.reminderTime}`);
-          showNotification('⏰ To-Do Reminder', item.text, `reminder-${item.id}`);
+          if (notifPermission === 'granted') {
+            showNotification('⏰ To-Do Reminder', item.text, `reminder-${item.id}`);
+          }
           itemsToFire.push(item.id);
+        }
+
+        // Auto-clear reminder if time has passed by 1+ minute
+        if (currentTotalMins > reminderTotalMins) {
+          itemsToAutoClear.push(item.id);
         }
       });
 
-      // Auto-clear reminder time after notification fires
-      if (itemsToFire.length > 0 && dateKey === todayKey) {
+      // Combine items to clear (fired just now OR expired)
+      const allToClear = [...new Set([...itemsToFire, ...itemsToAutoClear])];
+
+      if (allToClear.length > 0 && dateKey === todayKey) {
         setItems(prev => {
           const cleared = prev.map((item) =>
-            itemsToFire.includes(item.id) ? { ...item, reminderTime: undefined } : item
+            allToClear.includes(item.id) ? { ...item, reminderTime: undefined } : item
           );
           // Schedule save outside of setState
           setTimeout(() => {
