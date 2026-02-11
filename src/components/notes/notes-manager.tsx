@@ -212,6 +212,17 @@ function NoteEditor({
     el.style.height = el.scrollHeight + 'px';
   };
 
+  // Auto-resize all textareas when blocks load or change
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      blockRefs.current.forEach((el) => {
+        if (el instanceof HTMLTextAreaElement) {
+          autoResize(el);
+        }
+      });
+    });
+  }, [blocks]);
+
   // Delete note
   const handleDeleteNote = async () => {
     try {
