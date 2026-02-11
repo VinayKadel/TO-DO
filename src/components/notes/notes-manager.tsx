@@ -27,6 +27,70 @@ function blockId() {
   return `b_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// ─── Rich Text Block (uncontrolled contentEditable) ──────────────────
+import React from 'react';
+
+const RichTextBlock = React.memo(function RichTextBlock({
+  id,
+  initialContent,
+  placeholder,
+  onContentChange,
+  onMount,
+}: {
+  id: string;
+  initialContent: string;
+  placeholder: string;
+  onContentChange: (id: string, html: string) => void;
+  onMount: (id: string, el: HTMLDivElement) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    if (ref.current && !mounted.current) {
+      mounted.current = true;
+      ref.current.innerHTML = initialContent || '';
+      onMount(id, ref.current);
+    }
+  }, [id, initialContent, onMount]);
+
+  const handleInput = () => {
+    if (!ref.current) return;
+    const html = ref.current.innerHTML;
+    const cleaned = html === '<br>' ? '' : html;
+    onContentChange(id, cleaned);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const html = e.clipboardData.getData('text/html');
+    const text = e.clipboardData.getData('text/plain');
+    if (html) {
+      const temp = document.createElement('div');
+      temp.innerHTML = html;
+      const clean = temp.innerHTML
+        .replace(/<(?!\/?(b|i|u|s|em|strong|br|del|strike)\b)[^>]*>/gi, '')
+        .replace(/\s?style="[^"]*"/gi, '')
+        .replace(/\s?class="[^"]*"/gi, '');
+      document.execCommand('insertHTML', false, clean);
+    } else {
+      document.execCommand('insertText', false, text);
+    }
+  };
+
+  return (
+    <div
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      onInput={handleInput}
+      onPaste={handlePaste}
+      data-placeholder={placeholder}
+      className="w-full bg-transparent outline-none text-base text-gray-700 dark:text-gray-200 leading-relaxed min-h-[24px] empty:before:content-[attr(data-placeholder)] empty:before:text-gray-300 dark:empty:before:text-gray-600 empty:before:pointer-events-none [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_u]:underline [&_s]:line-through [&_del]:line-through [&_strike]:line-through"
+    />
+  );
+});
+
 // ─── Note Editor (seamless, single-page) ─────────────────────────────
 function NoteEditor({
   note,
@@ -55,6 +119,7 @@ function NoteEditor({
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blockRefs = useRef<Map<string, HTMLElement>>(new Map());
   const focusBlockRef = useRef<string | null>(null);
+  const contentRef = useRef<Map<string, string>>(new Map());
 
   // Auto-save
   const triggerAutoSave = useCallback(
@@ -84,8 +149,15 @@ function NoteEditor({
   );
 
   const updateBlocks = useCallback((newBlocks: NoteBlock[]) => {
-    setBlocks(newBlocks);
-    triggerAutoSave(title, newBlocks);
+    // Sync any pending rich text content from DOM before saving
+    const synced = newBlocks.map((b) => {
+      if (b.type === 'text' && contentRef.current.has(b.id)) {
+        return { ...b, content: contentRef.current.get(b.id) || '' };
+      }
+      return b;
+    });
+    setBlocks(synced);
+    triggerAutoSave(title, synced);
   }, [title, triggerAutoSave]);
 
   // Focus newly created block
@@ -246,33 +318,49 @@ function NoteEditor({
     return () => document.removeEventListener('selectionchange', handleSelectionChange);
   }, [handleSelectionChange]);
 
-  // Handle contentEditable input for text blocks
-  const handleContentEditableInput = (id: string, el: HTMLElement) => {
-    const html = el.innerHTML;
-    // Replace <br> only content with empty
-    const cleaned = html === '<br>' ? '' : html;
-    updateBlocks(blocks.map((b) => (b.id === id ? { ...b, content: cleaned } : b)));
-  };
+  // Handle contentEditable input for text blocks (no re-render, just save)
 
-  // Handle paste in contentEditable – keep only formatting, no images/links
-  const handleContentEditablePaste = (e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const html = e.clipboardData.getData('text/html');
-    const text = e.clipboardData.getData('text/plain');
-    if (html) {
-      // Strip everything except b/i/u/s/em/strong/br tags
-      const temp = document.createElement('div');
-      temp.innerHTML = html;
-      // Remove all elements except inline formatting
-      const clean = temp.innerHTML
-        .replace(/<(?!\/?(b|i|u|s|em|strong|br|del|strike)\b)[^>]*>/gi, '')
-        .replace(/\s?style="[^"]*"/gi, '')
-        .replace(/\s?class="[^"]*"/gi, '');
-      document.execCommand('insertHTML', false, clean);
-    } else {
-      document.execCommand('insertText', false, text);
-    }
-  };
+  const handleContentEditableChange = useCallback((id: string, html: string) => {
+    contentRef.current.set(id, html);
+    // Debounced save: update blocks with latest content from DOM
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      // Build blocks with latest content from contentRef
+      const currentBlocks = blocksRef.current.map((b) => {
+        if (b.type === 'text' && contentRef.current.has(b.id)) {
+          return { ...b, content: contentRef.current.get(b.id) || '' };
+        }
+        return b;
+      });
+      setIsSaving(true);
+      try {
+        const res = await fetch(`/api/user-notes/${note.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: titleRef.current,
+            content: JSON.stringify(currentBlocks),
+          }),
+        });
+        const data = await res.json();
+        if (data.success) onUpdate(data.data);
+      } catch (err) {
+        console.error('Failed to save note:', err);
+      } finally {
+        setIsSaving(false);
+      }
+    }, 600);
+  }, [note.id, onUpdate]);
+
+  // Keep refs in sync for the save callback
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
+  const titleRef = useRef(title);
+  titleRef.current = title;
+
+  const handleRichTextMount = useCallback((id: string, el: HTMLDivElement) => {
+    blockRefs.current.set(id, el);
+  }, []);
 
   // Delete note
   const handleDeleteNote = async () => {
@@ -388,15 +476,12 @@ function NoteEditor({
             <div key={block.id} className="group relative">
               {/* Text block (rich text) */}
               {block.type === 'text' && (
-                <div
-                  ref={(el) => { if (el) blockRefs.current.set(block.id, el); }}
-                  contentEditable
-                  suppressContentEditableWarning
-                  onInput={(e) => handleContentEditableInput(block.id, e.currentTarget)}
-                  onPaste={handleContentEditablePaste}
-                  dangerouslySetInnerHTML={{ __html: block.content || '' }}
-                  data-placeholder={index === 0 && blocks.length === 1 ? 'Start typing your note...' : ''}
-                  className="w-full bg-transparent outline-none text-base text-gray-700 dark:text-gray-200 leading-relaxed min-h-[24px] empty:before:content-[attr(data-placeholder)] empty:before:text-gray-300 dark:empty:before:text-gray-600 empty:before:pointer-events-none [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_u]:underline [&_s]:line-through [&_del]:line-through [&_strike]:line-through"
+                <RichTextBlock
+                  id={block.id}
+                  initialContent={block.content}
+                  placeholder={index === 0 && blocks.length === 1 ? 'Start typing your note...' : ''}
+                  onContentChange={handleContentEditableChange}
+                  onMount={handleRichTextMount}
                 />
               )}
 
