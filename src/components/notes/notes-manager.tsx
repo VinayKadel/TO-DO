@@ -183,7 +183,7 @@ function NoteEditor({
 
   // Handle Enter in a todo → create next todo
   const handleTodoKeyDown = (e: React.KeyboardEvent, index: number, block: NoteBlock) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (block.content.trim() === '') {
         // Empty todo + Enter → convert to a text block so user can keep typing
@@ -328,14 +328,19 @@ function NoteEditor({
                   >
                     {block.completed && <Check className="w-3 h-3" />}
                   </button>
-                  <input
+                  <textarea
                     ref={(el) => { if (el) blockRefs.current.set(block.id, el); }}
                     value={block.content}
-                    onChange={(e) => updateBlockContent(block.id, e.target.value)}
+                    onChange={(e) => {
+                      updateBlockContent(block.id, e.target.value);
+                      autoResize(e.target);
+                    }}
+                    onFocus={(e) => autoResize(e.target)}
                     onKeyDown={(e) => handleTodoKeyDown(e, index, block)}
                     placeholder="To-do..."
+                    rows={1}
                     className={cn(
-                      'flex-1 bg-transparent outline-none text-base leading-relaxed',
+                      'flex-1 bg-transparent outline-none text-base leading-relaxed resize-none overflow-hidden',
                       block.completed
                         ? 'line-through text-gray-400 dark:text-gray-500'
                         : 'text-gray-700 dark:text-gray-200'
