@@ -308,7 +308,7 @@ function NoteEditor({
                   }}
                   onFocus={(e) => autoResize(e.target)}
                   placeholder={index === 0 && blocks.length === 1 ? 'Start typing your note...' : ''}
-                  className="w-full bg-transparent outline-none text-sm text-gray-700 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 resize-none leading-relaxed overflow-hidden"
+                  className="w-full bg-transparent outline-none text-base text-gray-700 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 resize-none leading-relaxed overflow-hidden"
                   rows={1}
                   style={{ minHeight: '24px' }}
                 />
@@ -335,7 +335,7 @@ function NoteEditor({
                     onKeyDown={(e) => handleTodoKeyDown(e, index, block)}
                     placeholder="To-do..."
                     className={cn(
-                      'flex-1 bg-transparent outline-none text-sm leading-relaxed',
+                      'flex-1 bg-transparent outline-none text-base leading-relaxed',
                       block.completed
                         ? 'line-through text-gray-400 dark:text-gray-500'
                         : 'text-gray-700 dark:text-gray-200'
@@ -657,7 +657,7 @@ export function NotesManager() {
                 </h3>
 
                 {textPreview && (
-                  <p className="text-base text-gray-500 dark:text-gray-400 line-clamp-3 mb-3">
+                  <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-3 mb-3">
                     {textPreview}
                   </p>
                 )}
