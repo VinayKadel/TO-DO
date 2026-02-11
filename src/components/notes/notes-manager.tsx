@@ -420,8 +420,22 @@ export function NotesManager() {
   const [notes, setNotes] = useState<NoteData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('active-note-id');
+    }
+    return null;
+  });
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  // Persist active note ID
+  useEffect(() => {
+    if (activeNoteId) {
+      localStorage.setItem('active-note-id', activeNoteId);
+    } else {
+      localStorage.removeItem('active-note-id');
+    }
+  }, [activeNoteId]);
 
   // Load notes
   const loadNotes = useCallback(async () => {

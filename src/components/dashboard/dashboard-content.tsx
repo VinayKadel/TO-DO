@@ -26,11 +26,7 @@ export function DashboardContent({ tasks, notes }: DashboardContentProps) {
   // Persist tab preference
   useEffect(() => {
     const saved = localStorage.getItem('dashboard-tab');
-    // Migrate old 'notes' preference to 'todos'
-    if (saved === 'notes') {
-      localStorage.setItem('dashboard-tab', 'todos');
-      setActiveTab('todos');
-    } else if (saved && TABS.find(t => t.id === saved)) {
+    if (saved && TABS.find(t => t.id === saved)) {
       setActiveTab(saved);
     }
   }, []);
