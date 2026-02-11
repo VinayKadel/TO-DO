@@ -179,13 +179,10 @@ function NoteEditor({
     if (e.key === 'Enter') {
       e.preventDefault();
       if (block.content.trim() === '') {
-        // Empty todo + Enter → remove it and merge surrounding text blocks
-        let newBlocks = blocks.filter((b) => b.id !== block.id);
-        newBlocks = mergeAdjacentTextBlocks(newBlocks);
-        if (newBlocks.length === 0) newBlocks.push({ id: blockId(), type: 'text', content: '' });
-        // Focus the text block that now occupies this position
-        const focusIdx = Math.min(index, newBlocks.length - 1);
-        if (newBlocks[focusIdx]?.type === 'text') focusBlockRef.current = newBlocks[focusIdx].id;
+        // Empty todo + Enter → convert to a text block so user can keep typing
+        const newBlocks = [...blocks];
+        newBlocks[index] = { id: block.id, type: 'text', content: '' };
+        focusBlockRef.current = block.id;
         updateBlocks(newBlocks);
       } else {
         insertTodoAfter(index);
@@ -193,6 +190,7 @@ function NoteEditor({
     }
     if (e.key === 'Backspace' && block.content === '') {
       e.preventDefault();
+      // Remove this todo, merge adjacent text blocks, focus previous
       let newBlocks = blocks.filter((b) => b.id !== block.id);
       newBlocks = mergeAdjacentTextBlocks(newBlocks);
       if (newBlocks.length === 0) newBlocks.push({ id: blockId(), type: 'text', content: '' });
