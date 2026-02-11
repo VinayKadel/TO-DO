@@ -142,63 +142,70 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
   // ─── Request notification permission on mount ────────────────────
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    try {
-      if ('Notification' in window) {
-        setNotifPermission(Notification.permission);
-        if (Notification.permission === 'default') {
-          // Some browsers (older Safari) use callback instead of Promise
-          const result = Notification.requestPermission((perm) => {
-            setNotifPermission(perm);
-          });
-          // Modern browsers return a Promise
-          if (result && typeof result.then === 'function') {
-            result.then((perm) => setNotifPermission(perm)).catch(() => {});
-          }
-        }
-      }
-    } catch {
-      // Notification API not supported
-      console.log('Notifications not supported on this device');
+    if (!('Notification' in window)) {
+      console.log('[Reminders] Notification API not supported');
+      return;
+    }
+    setNotifPermission(Notification.permission);
+    if (Notification.permission === 'default') {
+      Notification.requestPermission().then((perm) => {
+        console.log('[Reminders] Permission result:', perm);
+        setNotifPermission(perm);
+      }).catch(() => {
+        console.log('[Reminders] Permission request failed');
+      });
+    } else {
+      console.log('[Reminders] Permission already:', Notification.permission);
     }
   }, []);
 
-  // ─── Show notification via Service Worker (mobile) or Notification API (desktop) ─
-  const showNotification = useCallback(async (title: string, body: string, tag: string) => {
+  // ─── Show notification ─ try basic Notification first, then SW ───────────
+  const fireNotification = useCallback((title: string, body: string, tag: string) => {
+    console.log('[Reminders] Firing notification:', title, body);
+    
+    if (!('Notification' in window)) {
+      console.log('[Reminders] No Notification API');
+      return;
+    }
+    if (Notification.permission !== 'granted') {
+      console.log('[Reminders] Permission not granted:', Notification.permission);
+      return;
+    }
+
+    // Try basic Notification API first (works on desktop Mac/Windows)
     try {
-      if ('serviceWorker' in navigator) {
-        const reg = await navigator.serviceWorker.ready;
-        if (reg) {
-          // Method 1: Direct showNotification (most reliable)
-          try {
-            await reg.showNotification(title, {
-              body,
-              icon: '/icons/icon-192.png',
-              badge: '/icons/icon-72.png',
-              tag,
-              data: { url: '/dashboard' },
-            } as NotificationOptions);
-            return;
-          } catch {
-            // If showNotification fails, try message-based approach
-          }
-          // Method 2: Post message to service worker
-          if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({
-              type: 'SHOW_NOTIFICATION',
-              title,
-              body,
-              tag,
-            });
-            return;
-          }
-        }
-      }
-      // Method 3: Fallback to basic Notification API (desktop)
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification(title, { body, icon: '/icon.svg', tag });
-      }
-    } catch {
-      // Silently fail — notifications not supported
+      const n = new Notification(title, {
+        body,
+        icon: '/icons/icon-192.svg',
+        tag,
+        requireInteraction: true,
+      });
+      n.onclick = () => {
+        window.focus();
+        n.close();
+      };
+      console.log('[Reminders] Notification created via API');
+      return;
+    } catch (err) {
+      console.log('[Reminders] Basic Notification failed:', err);
+    }
+
+    // Fallback: try service worker showNotification (for mobile PWA)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.showNotification(title, {
+          body,
+          icon: '/icons/icon-192.svg',
+          tag,
+          data: { url: '/dashboard' },
+        } as NotificationOptions).then(() => {
+          console.log('[Reminders] SW notification sent');
+        }).catch((err) => {
+          console.log('[Reminders] SW notification failed:', err);
+        });
+      }).catch((err) => {
+        console.log('[Reminders] SW ready failed:', err);
+      });
     }
   }, []);
 
@@ -211,49 +218,43 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
       const currentTotalMins = currentHour * 60 + currentMin;
       const todayKey = format(now, 'yyyy-MM-dd');
 
-      // Also check the currently loaded items for the selected date (if it's today)
-      const todayNote = notes[todayKey];
-      const itemsToCheck = todayNote ? parseContent(todayNote.content) : [];
+      // Only process if we're viewing today
+      if (dateKey !== todayKey) return;
 
-      // If we're viewing today, prefer live items state
-      const finalItems = (dateKey === todayKey) ? items : itemsToCheck;
-
-      const itemsToFire: string[] = [];
+      const itemsToNotify: string[] = [];
       const itemsToAutoClear: string[] = [];
 
-      finalItems.forEach((item) => {
+      items.forEach((item) => {
         if (!item.reminderTime || item.completed) return;
 
         const [rh, rm] = item.reminderTime.split(':').map(Number);
         const reminderTotalMins = rh * 60 + rm;
+        const firedKey = `${todayKey}-${item.id}-${item.reminderTime}`;
 
-        // Fire notification at exact time
+        // Fire notification when time matches (exact minute)
         if (
-          item.reminderTime === format(now, 'HH:mm') &&
-          !firedRemindersRef.current.has(`${todayKey}-${item.id}-${item.reminderTime}`)
+          currentTotalMins === reminderTotalMins &&
+          !firedRemindersRef.current.has(firedKey)
         ) {
-          firedRemindersRef.current.add(`${todayKey}-${item.id}-${item.reminderTime}`);
-          if (notifPermission === 'granted') {
-            showNotification('⏰ To-Do Reminder', item.text, `reminder-${item.id}`);
-          }
-          itemsToFire.push(item.id);
+          firedRemindersRef.current.add(firedKey);
+          itemsToNotify.push(item.id);
+          fireNotification('⏰ To-Do Reminder', item.text, `reminder-${item.id}`);
         }
 
-        // Auto-clear reminder if time has passed by 1+ minute
-        if (currentTotalMins > reminderTotalMins) {
+        // Auto-clear reminder 2 minutes AFTER scheduled time
+        // This gives the notification time to show
+        if (currentTotalMins >= reminderTotalMins + 2) {
           itemsToAutoClear.push(item.id);
         }
       });
 
-      // Combine items to clear (fired just now OR expired)
-      const allToClear = [...new Set([...itemsToFire, ...itemsToAutoClear])];
-
-      if (allToClear.length > 0 && dateKey === todayKey) {
+      // Only auto-clear (don't clear items that just fired)
+      if (itemsToAutoClear.length > 0) {
         setItems(prev => {
           const cleared = prev.map((item) =>
-            allToClear.includes(item.id) ? { ...item, reminderTime: undefined } : item
+            itemsToAutoClear.includes(item.id) ? { ...item, reminderTime: undefined } : item
           );
-          // Schedule save outside of setState
+          // Save to server
           setTimeout(() => {
             const content = serializeItems(cleared);
             fetch('/api/notes', {
@@ -270,7 +271,7 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
     checkReminders();
     const interval = setInterval(checkReminders, 15000);
     return () => clearInterval(interval);
-  }, [notifPermission, notes, items, dateKey, showNotification]);
+  }, [items, dateKey, fireNotification]);
 
   // ─── Set/remove reminder on a task ───────────────────────────────
   const setReminder = (id: string, time: string | undefined) => {

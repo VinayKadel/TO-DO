@@ -1,7 +1,7 @@
 // Service Worker for HabitTrack PWA
-const CACHE_NAME = 'habittrack-v2';
-const STATIC_CACHE_NAME = 'habittrack-static-v2';
-const DYNAMIC_CACHE_NAME = 'habittrack-dynamic-v2';
+const CACHE_NAME = 'habittrack-v3';
+const STATIC_CACHE_NAME = 'habittrack-static-v3';
+const DYNAMIC_CACHE_NAME = 'habittrack-dynamic-v3';
 
 // Static assets to cache
 const STATIC_ASSETS = [
@@ -106,8 +106,8 @@ self.addEventListener('push', (event) => {
     const data = event.data.json();
     const options = {
       body: data.body,
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-72.png',
+      icon: '/icons/icon-192.svg',
+      badge: '/icons/icon-192.svg',
       vibrate: [100, 50, 100],
       data: {
         url: data.url || '/dashboard',
@@ -145,8 +145,8 @@ self.addEventListener('message', (event) => {
     const { title, body, tag } = event.data;
     self.registration.showNotification(title || 'To-Do Reminder', {
       body: body || '',
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-72.png',
+      icon: '/icons/icon-192.svg',
+      badge: '/icons/icon-192.svg',
       tag: tag || 'reminder',
       vibrate: [200, 100, 200],
       data: { url: '/dashboard' },
