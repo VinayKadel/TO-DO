@@ -1,9 +1,9 @@
 'use client';
 
-// Daily To-Do Manager - manage your daily tasks
+// Daily To-Do Manager - manage your daily tasks with reminders
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { format, addDays, subDays, isToday } from 'date-fns';
-import { ChevronLeft, ChevronRight, Calendar, Loader2, Check, Plus, Trash2, Pencil, GripVertical, ListTodo } from 'lucide-react';
+import { format, addDays, subDays, isToday, isBefore, startOfDay, isSameDay } from 'date-fns';
+import { ChevronLeft, ChevronRight, Calendar, Loader2, Check, Plus, Trash2, Pencil, GripVertical, ListTodo, Bell, BellOff, BellRing, Clock, CalendarDays, X } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { formatDateForStorage } from '@/lib/date-utils';
 import { DailyNote } from '@/types';
@@ -13,6 +13,7 @@ interface TodoItem {
   id: string;
   text: string;
   completed: boolean;
+  reminderTime?: string; // HH:mm format
 }
 
 // Check if text has multiple lines
@@ -26,6 +27,7 @@ interface DailyNotesProps {
 
 // Parse content into todo items
 // Format: Tasks start with [ ] or [x], continuation lines are indented with 2 spaces
+// Reminders stored as @remind:HH:mm at end of first line
 function parseContent(content: string): TodoItem[] {
   if (!content.trim()) return [];
   
@@ -42,10 +44,21 @@ function parseContent(content: string): TodoItem[] {
       if (currentItem) {
         items.push(currentItem);
       }
+      let text = checklistMatch[2];
+      let reminderTime: string | undefined;
+
+      // Extract reminder tag
+      const reminderMatch = text.match(/\s*@remind:(\d{2}:\d{2})$/);
+      if (reminderMatch) {
+        reminderTime = reminderMatch[1];
+        text = text.replace(/\s*@remind:\d{2}:\d{2}$/, '');
+      }
+
       currentItem = {
         id: `todo-${i}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        text: checklistMatch[2],
+        text,
         completed: checklistMatch[1] === 'x',
+        reminderTime,
       };
     } else if (currentItem && line.startsWith('  ')) {
       // Continuation line (indented) - append to current task
@@ -76,12 +89,14 @@ function parseContent(content: string): TodoItem[] {
 
 // Convert todo items to storage format
 // Multi-line tasks have continuation lines indented with 2 spaces
+// Reminders stored as @remind:HH:mm at end of first line
 function serializeItems(items: TodoItem[]): string {
   return items.map(item => {
     const checkbox = `[${item.completed ? 'x' : ' '}] `;
     const lines = item.text.split('\n');
-    // First line gets the checkbox, subsequent lines get 2-space indent
-    return checkbox + lines[0] + (lines.length > 1 
+    const reminderTag = item.reminderTime ? ` @remind:${item.reminderTime}` : '';
+    // First line gets the checkbox + reminder tag, subsequent lines get 2-space indent
+    return checkbox + lines[0] + reminderTag + (lines.length > 1 
       ? '\n' + lines.slice(1).map(l => '  ' + l).join('\n')
       : '');
   }).join('\n');
@@ -113,7 +128,117 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
   const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
   const dragCounterRef = useRef(0);
 
+  // Reminder state
+  const [reminderPickerId, setReminderPickerId] = useState<string | null>(null);
+  const [reminderTimeInput, setReminderTimeInput] = useState('');
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
+  const firedRemindersRef = useRef<Set<string>>(new Set());
+  const [showUpcoming, setShowUpcoming] = useState(false);
+  const [upcomingTasks, setUpcomingTasks] = useState<{ date: string; items: TodoItem[] }[]>([]);
+  const [loadingUpcoming, setLoadingUpcoming] = useState(false);
+
   const dateKey = format(selectedDate, 'yyyy-MM-dd');
+
+  // ─── Request notification permission on mount ────────────────────
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotifPermission(Notification.permission);
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().then((perm) => {
+          setNotifPermission(perm);
+        });
+      }
+    }
+  }, []);
+
+  // ─── Notification scheduler — checks every 30s ──────────────────
+  useEffect(() => {
+    if (notifPermission !== 'granted') return;
+
+    const checkReminders = () => {
+      const now = new Date();
+      const currentTime = format(now, 'HH:mm');
+      const todayKey = format(now, 'yyyy-MM-dd');
+
+      // Check all stored notes for today
+      const todayNote = notes[todayKey];
+      if (!todayNote) return;
+
+      const todayItems = parseContent(todayNote.content);
+      todayItems.forEach((item) => {
+        if (
+          item.reminderTime &&
+          !item.completed &&
+          item.reminderTime === currentTime &&
+          !firedRemindersRef.current.has(`${todayKey}-${item.id}-${item.reminderTime}`)
+        ) {
+          firedRemindersRef.current.add(`${todayKey}-${item.id}-${item.reminderTime}`);
+          new Notification('⏰ To-Do Reminder', {
+            body: item.text,
+            icon: '/icon.svg',
+            tag: `reminder-${item.id}`,
+          });
+        }
+      });
+    };
+
+    checkReminders();
+    const interval = setInterval(checkReminders, 30000);
+    return () => clearInterval(interval);
+  }, [notifPermission, notes]);
+
+  // ─── Set/remove reminder on a task ───────────────────────────────
+  const setReminder = (id: string, time: string | undefined) => {
+    const newItems = items.map((item) =>
+      item.id === id ? { ...item, reminderTime: time } : item
+    );
+    setItems(newItems);
+    triggerAutoSave(newItems);
+    setReminderPickerId(null);
+    setReminderTimeInput('');
+  };
+
+  const openReminderPicker = (item: TodoItem) => {
+    setReminderPickerId(item.id);
+    setReminderTimeInput(item.reminderTime || '');
+  };
+
+  // ─── Load upcoming tasks with reminders ──────────────────────────
+  const loadUpcomingTasks = useCallback(async () => {
+    setLoadingUpcoming(true);
+    try {
+      const today = new Date();
+      const futureDate = addDays(today, 30);
+      const startStr = format(addDays(today, 1), 'yyyy-MM-dd');
+      const endStr = format(futureDate, 'yyyy-MM-dd');
+
+      const response = await fetch(`/api/notes?startDate=${startStr}&endDate=${endStr}`);
+      const result = await response.json();
+
+      if (result.success && result.data.length > 0) {
+        const upcoming: { date: string; items: TodoItem[] }[] = [];
+        for (const note of result.data) {
+          const noteDate = format(new Date(note.date), 'yyyy-MM-dd');
+          const parsed = parseContent(note.content);
+          const withReminders = parsed.filter((i) => i.reminderTime && !i.completed);
+          const pending = parsed.filter((i) => !i.completed && !i.reminderTime);
+          const all = [...withReminders, ...pending];
+          if (all.length > 0) {
+            upcoming.push({ date: noteDate, items: all });
+          }
+        }
+        // Sort by date ascending
+        upcoming.sort((a, b) => a.date.localeCompare(b.date));
+        setUpcomingTasks(upcoming);
+      } else {
+        setUpcomingTasks([]);
+      }
+    } catch (err) {
+      console.error('Error loading upcoming tasks:', err);
+    } finally {
+      setLoadingUpcoming(false);
+    }
+  }, []);
 
   // Load note for selected date
   const loadNote = useCallback(async (date: Date) => {
@@ -510,7 +635,7 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, item.id)}
                 className={cn(
-                  'group flex items-start gap-3 p-4 rounded-xl',
+                  'group flex flex-col p-4 rounded-xl',
                   'bg-white dark:bg-gray-800',
                   'border border-gray-100 dark:border-gray-700',
                   'shadow-sm hover:shadow-md transition-all duration-200',
@@ -521,72 +646,148 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
                   draggedItemId === item.id && 'opacity-50'
                 )}
               >
-                <div
-                  className="flex-shrink-0 w-5 h-5 mt-0.5 flex items-center justify-center text-gray-300 dark:text-gray-600 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="Drag to reorder"
-                >
-                  <GripVertical className="w-4 h-4" />
-                </div>
-                <button
-                  onClick={() => toggleTask(item.id)}
-                  className={cn(
-                    'flex-shrink-0 w-6 h-6 mt-0.5 rounded-md border-2 flex items-center justify-center transition-all duration-200',
-                    'border-gray-300 dark:border-gray-600',
-                    'hover:border-primary-500 dark:hover:border-primary-400',
-                    'hover:bg-primary-50 dark:hover:bg-primary-900/30'
-                  )}
-                >
-                </button>
-                
-                {editingId === item.id ? (
-                  <div className="flex-1 flex flex-col gap-2">
-                    <textarea
-                      ref={editInputRef}
-                      value={editText}
-                      onChange={handleEditTextChange}
-                      onKeyDown={handleEditKeyDown}
-                      className="w-full bg-transparent border-none outline-none text-gray-800 dark:text-gray-200 font-medium resize-none min-h-[24px]"
-                      rows={1}
-                    />
-                    <div className="flex items-center gap-2">
-                      <Button variant="primary" size="sm" onClick={saveEdit}>
-                        Save
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={cancelEdit}>
-                        Cancel
-                      </Button>
-                      <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
-                        {isMobile ? 'Tap Save when done' : 'Enter to save, Esc to cancel'}
-                      </span>
-                    </div>
+                <div className="flex items-start gap-3">
+                  <div
+                    className="flex-shrink-0 w-5 h-5 mt-0.5 flex items-center justify-center text-gray-300 dark:text-gray-600 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Drag to reorder"
+                  >
+                    <GripVertical className="w-4 h-4" />
                   </div>
-                ) : (
-                  <>
-                    <span 
-                      className="flex-1 text-gray-800 dark:text-gray-200 font-medium whitespace-pre-wrap cursor-pointer hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-                      onClick={() => startEditing(item)}
-                      title="Click to edit"
-                    >
-                      {item.text}
+                  <button
+                    onClick={() => toggleTask(item.id)}
+                    className={cn(
+                      'flex-shrink-0 w-6 h-6 mt-0.5 rounded-md border-2 flex items-center justify-center transition-all duration-200',
+                      'border-gray-300 dark:border-gray-600',
+                      'hover:border-primary-500 dark:hover:border-primary-400',
+                      'hover:bg-primary-50 dark:hover:bg-primary-900/30'
+                    )}
+                  >
+                  </button>
+                  
+                  {editingId === item.id ? (
+                    <div className="flex-1 flex flex-col gap-2">
+                      <textarea
+                        ref={editInputRef}
+                        value={editText}
+                        onChange={handleEditTextChange}
+                        onKeyDown={handleEditKeyDown}
+                        className="w-full bg-transparent border-none outline-none text-gray-800 dark:text-gray-200 font-medium resize-none min-h-[24px]"
+                        rows={1}
+                      />
+                      <div className="flex items-center gap-2">
+                        <Button variant="primary" size="sm" onClick={saveEdit}>
+                          Save
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={cancelEdit}>
+                          Cancel
+                        </Button>
+                        <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
+                          {isMobile ? 'Tap Save when done' : 'Enter to save, Esc to cancel'}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <span 
+                        className="flex-1 text-gray-800 dark:text-gray-200 font-medium whitespace-pre-wrap cursor-pointer hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                        onClick={() => startEditing(item)}
+                        title="Click to edit"
+                      >
+                        {item.text}
+                      </span>
+                      
+                      {/* Reminder bell icon */}
+                      <button
+                        onClick={() => openReminderPicker(item)}
+                        className={cn(
+                          'flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg transition-all',
+                          item.reminderTime
+                            ? 'text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20'
+                            : 'text-gray-300 dark:text-gray-600 hover:text-amber-500 dark:hover:text-amber-400 opacity-0 group-hover:opacity-100 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                        )}
+                        title={item.reminderTime ? `Reminder at ${item.reminderTime}` : 'Set reminder'}
+                      >
+                        {item.reminderTime ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                      </button>
+
+                      <button
+                        onClick={() => startEditing(item)}
+                        className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-300 dark:text-gray-600 hover:text-primary-500 dark:hover:text-primary-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20"
+                        title="Edit task"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                  
+                  <button
+                    onClick={() => deleteTask(item.id)}
+                    className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                    title="Delete task"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Reminder badge */}
+                {item.reminderTime && reminderPickerId !== item.id && (
+                  <div className="flex items-center gap-1.5 mt-2 ml-14">
+                    <Clock className="w-3 h-3 text-amber-500 dark:text-amber-400" />
+                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                      Reminder at {item.reminderTime}
                     </span>
-                    
                     <button
-                      onClick={() => startEditing(item)}
-                      className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-300 dark:text-gray-600 hover:text-primary-500 dark:hover:text-primary-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20"
-                      title="Edit task"
+                      onClick={() => setReminder(item.id, undefined)}
+                      className="ml-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                      title="Remove reminder"
                     >
-                      <Pencil className="w-4 h-4" />
+                      <X className="w-3 h-3" />
                     </button>
-                  </>
+                  </div>
                 )}
-                
-                <button
-                  onClick={() => deleteTask(item.id)}
-                  className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
-                  title="Delete task"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+
+                {/* Reminder time picker */}
+                {reminderPickerId === item.id && (
+                  <div className="flex items-center gap-2 mt-2 ml-14 p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                    <Clock className="w-4 h-4 text-amber-500 dark:text-amber-400 flex-shrink-0" />
+                    <input
+                      type="time"
+                      value={reminderTimeInput}
+                      onChange={(e) => setReminderTimeInput(e.target.value)}
+                      className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md px-2 py-1 text-sm text-gray-800 dark:text-gray-200 outline-none focus:ring-2 focus:ring-amber-300 dark:focus:ring-amber-700"
+                      autoFocus
+                    />
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => {
+                        if (reminderTimeInput) {
+                          setReminder(item.id, reminderTimeInput);
+                        }
+                      }}
+                      disabled={!reminderTimeInput}
+                      className="!py-1 !px-2 text-xs"
+                    >
+                      Set
+                    </Button>
+                    {item.reminderTime && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setReminder(item.id, undefined)}
+                        className="!py-1 !px-2 text-xs text-red-500 hover:text-red-600"
+                      >
+                        Remove
+                      </Button>
+                    )}
+                    <button
+                      onClick={() => { setReminderPickerId(null); setReminderTimeInput(''); }}
+                      className="ml-auto text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
             
@@ -651,6 +852,78 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
           </div>
         </div>
       )}
+
+      {/* Upcoming Section */}
+      <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+        <button
+          onClick={() => {
+            const next = !showUpcoming;
+            setShowUpcoming(next);
+            if (next) loadUpcomingTasks();
+          }}
+          className="w-full flex items-center justify-between p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-all"
+        >
+          <div className="flex items-center gap-2">
+            <CalendarDays className="w-5 h-5 text-primary-500" />
+            <span className="font-semibold text-gray-800 dark:text-gray-200">Upcoming</span>
+          </div>
+          <ChevronRight className={cn(
+            'w-5 h-5 text-gray-400 transition-transform duration-200',
+            showUpcoming && 'rotate-90'
+          )} />
+        </button>
+
+        {showUpcoming && (
+          <div className="mt-3 space-y-3 max-h-[400px] overflow-y-auto">
+            {loadingUpcoming ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+              </div>
+            ) : upcomingTasks.length === 0 ? (
+              <div className="text-center py-6 text-gray-400 dark:text-gray-500">
+                <CalendarDays className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No upcoming tasks</p>
+                <p className="text-xs mt-1">Navigate to future dates and add tasks</p>
+              </div>
+            ) : (
+              upcomingTasks.map((group) => (
+                <div key={group.date} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+                  <button
+                    onClick={() => {
+                      setSelectedDate(new Date(group.date + 'T00:00:00'));
+                      setShowUpcoming(false);
+                    }}
+                    className="w-full px-4 py-2 text-left bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+                  >
+                    <span className="text-sm font-semibold text-primary-600 dark:text-primary-400">
+                      {format(new Date(group.date + 'T00:00:00'), 'EEEE, MMM d')}
+                    </span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">
+                      {group.items.length} task{group.items.length !== 1 ? 's' : ''}
+                    </span>
+                  </button>
+                  <div className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                    {group.items.map((task) => (
+                      <div key={task.id} className="flex items-center gap-3 px-4 py-2.5">
+                        <div className="w-4 h-4 rounded border-2 border-gray-300 dark:border-gray-600 flex-shrink-0" />
+                        <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate">
+                          {task.text}
+                        </span>
+                        {task.reminderTime && (
+                          <span className="flex items-center gap-1 text-xs text-amber-500 dark:text-amber-400 flex-shrink-0">
+                            <BellRing className="w-3 h-3" />
+                            {task.reminderTime}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
