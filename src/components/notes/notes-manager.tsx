@@ -145,9 +145,29 @@ function NoteEditor({
     updateBlocks(blocks.map((b) => (b.id === id ? { ...b, completed: !b.completed } : b)));
   };
 
-  // Delete a block (keep at least one text block)
+  // Merge adjacent text blocks into one
+  const mergeAdjacentTextBlocks = (blocksList: NoteBlock[]): NoteBlock[] => {
+    const merged: NoteBlock[] = [];
+    for (const block of blocksList) {
+      const prev = merged[merged.length - 1];
+      if (prev && prev.type === 'text' && block.type === 'text') {
+        // Merge into previous text block
+        prev.content = prev.content
+          ? block.content
+            ? prev.content + '\n' + block.content
+            : prev.content
+          : block.content;
+      } else {
+        merged.push({ ...block });
+      }
+    }
+    return merged;
+  };
+
+  // Delete a block (keep at least one text block, merge adjacent text blocks)
   const deleteBlock = (id: string) => {
-    const newBlocks = blocks.filter((b) => b.id !== id);
+    let newBlocks = blocks.filter((b) => b.id !== id);
+    newBlocks = mergeAdjacentTextBlocks(newBlocks);
     if (newBlocks.length === 0) {
       newBlocks.push({ id: blockId(), type: 'text', content: '' });
     }
@@ -159,10 +179,13 @@ function NoteEditor({
     if (e.key === 'Enter') {
       e.preventDefault();
       if (block.content.trim() === '') {
-        // Empty todo + Enter → convert to text block
-        const newBlocks = [...blocks];
-        newBlocks[index] = { ...block, type: 'text', content: '' };
-        focusBlockRef.current = block.id;
+        // Empty todo + Enter → remove it and merge surrounding text blocks
+        let newBlocks = blocks.filter((b) => b.id !== block.id);
+        newBlocks = mergeAdjacentTextBlocks(newBlocks);
+        if (newBlocks.length === 0) newBlocks.push({ id: blockId(), type: 'text', content: '' });
+        // Focus the text block that now occupies this position
+        const focusIdx = Math.min(index, newBlocks.length - 1);
+        if (newBlocks[focusIdx]?.type === 'text') focusBlockRef.current = newBlocks[focusIdx].id;
         updateBlocks(newBlocks);
       } else {
         insertTodoAfter(index);
@@ -170,8 +193,8 @@ function NoteEditor({
     }
     if (e.key === 'Backspace' && block.content === '') {
       e.preventDefault();
-      // Remove this todo and focus previous
-      const newBlocks = blocks.filter((b) => b.id !== block.id);
+      let newBlocks = blocks.filter((b) => b.id !== block.id);
+      newBlocks = mergeAdjacentTextBlocks(newBlocks);
       if (newBlocks.length === 0) newBlocks.push({ id: blockId(), type: 'text', content: '' });
       if (index > 0) focusBlockRef.current = newBlocks[Math.min(index - 1, newBlocks.length - 1)].id;
       updateBlocks(newBlocks);
