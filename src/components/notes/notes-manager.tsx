@@ -657,7 +657,7 @@ export function NotesManager() {
                 </h3>
 
                 {textPreview && (
-                  <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-3 mb-3">
+                  <p className="text-base text-gray-500 dark:text-gray-400 line-clamp-3 mb-3">
                     {textPreview}
                   </p>
                 )}
