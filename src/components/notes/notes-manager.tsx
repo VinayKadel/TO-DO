@@ -13,6 +13,10 @@ import {
   ListChecks,
   MoreVertical,
   StickyNote,
+  Bold,
+  Italic,
+  Underline,
+  Strikethrough,
 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { cn } from '@/lib/utils';
@@ -49,7 +53,7 @@ function NoteEditor({
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const blockRefs = useRef<Map<string, HTMLTextAreaElement | HTMLInputElement>>(new Map());
+  const blockRefs = useRef<Map<string, HTMLElement>>(new Map());
   const focusBlockRef = useRef<string | null>(null);
 
   // Auto-save
@@ -223,6 +227,53 @@ function NoteEditor({
     });
   }, [blocks]);
 
+  // Rich text formatting
+  const applyFormat = (command: string) => {
+    document.execCommand(command, false);
+  };
+
+  const isFormatActive = (command: string): boolean => {
+    return document.queryCommandState(command);
+  };
+
+  const [, setFormatRefresh] = useState(0);
+  const handleSelectionChange = useCallback(() => {
+    setFormatRefresh((n) => n + 1);
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => document.removeEventListener('selectionchange', handleSelectionChange);
+  }, [handleSelectionChange]);
+
+  // Handle contentEditable input for text blocks
+  const handleContentEditableInput = (id: string, el: HTMLElement) => {
+    const html = el.innerHTML;
+    // Replace <br> only content with empty
+    const cleaned = html === '<br>' ? '' : html;
+    updateBlocks(blocks.map((b) => (b.id === id ? { ...b, content: cleaned } : b)));
+  };
+
+  // Handle paste in contentEditable – keep only formatting, no images/links
+  const handleContentEditablePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const html = e.clipboardData.getData('text/html');
+    const text = e.clipboardData.getData('text/plain');
+    if (html) {
+      // Strip everything except b/i/u/s/em/strong/br tags
+      const temp = document.createElement('div');
+      temp.innerHTML = html;
+      // Remove all elements except inline formatting
+      const clean = temp.innerHTML
+        .replace(/<(?!\/?(b|i|u|s|em|strong|br|del|strike)\b)[^>]*>/gi, '')
+        .replace(/\s?style="[^"]*"/gi, '')
+        .replace(/\s?class="[^"]*"/gi, '');
+      document.execCommand('insertHTML', false, clean);
+    } else {
+      document.execCommand('insertText', false, text);
+    }
+  };
+
   // Delete note
   const handleDeleteNote = async () => {
     try {
@@ -301,6 +352,33 @@ function NoteEditor({
           className="w-full text-xl sm:text-2xl font-bold bg-transparent outline-none text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-gray-600 mb-4"
         />
 
+        {/* Formatting toolbar */}
+        <div className="flex items-center gap-0.5 mb-3">
+          {[
+            { cmd: 'bold', icon: Bold, label: 'Bold' },
+            { cmd: 'italic', icon: Italic, label: 'Italic' },
+            { cmd: 'underline', icon: Underline, label: 'Underline' },
+            { cmd: 'strikeThrough', icon: Strikethrough, label: 'Strikethrough' },
+          ].map(({ cmd, icon: Icon, label }) => (
+            <button
+              key={cmd}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                applyFormat(cmd);
+              }}
+              className={cn(
+                'p-1.5 rounded-md transition-all duration-150',
+                isFormatActive(cmd)
+                  ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400'
+                  : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+              )}
+              title={label}
+            >
+              <Icon className="w-4 h-4" />
+            </button>
+          ))}
+        </div>
+
         {/* Divider */}
         <div className="border-b border-gray-200 dark:border-gray-700 mb-4" />
 
@@ -308,20 +386,17 @@ function NoteEditor({
         <div className="space-y-1">
           {blocks.map((block, index) => (
             <div key={block.id} className="group relative">
-              {/* Text block */}
+              {/* Text block (rich text) */}
               {block.type === 'text' && (
-                <textarea
+                <div
                   ref={(el) => { if (el) blockRefs.current.set(block.id, el); }}
-                  value={block.content}
-                  onChange={(e) => {
-                    updateBlockContent(block.id, e.target.value);
-                    autoResize(e.target);
-                  }}
-                  onFocus={(e) => autoResize(e.target)}
-                  placeholder={index === 0 && blocks.length === 1 ? 'Start typing your note...' : ''}
-                  className="w-full bg-transparent outline-none text-base text-gray-700 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 resize-none leading-relaxed overflow-hidden"
-                  rows={1}
-                  style={{ minHeight: '24px' }}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={(e) => handleContentEditableInput(block.id, e.currentTarget)}
+                  onPaste={handleContentEditablePaste}
+                  dangerouslySetInnerHTML={{ __html: block.content || '' }}
+                  data-placeholder={index === 0 && blocks.length === 1 ? 'Start typing your note...' : ''}
+                  className="w-full bg-transparent outline-none text-base text-gray-700 dark:text-gray-200 leading-relaxed min-h-[24px] empty:before:content-[attr(data-placeholder)] empty:before:text-gray-300 dark:empty:before:text-gray-600 empty:before:pointer-events-none [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_u]:underline [&_s]:line-through [&_del]:line-through [&_strike]:line-through"
                 />
               )}
 
@@ -615,10 +690,10 @@ export function NotesManager() {
               blocks = JSON.parse(note.content);
             } catch {}
 
-            // Preview: first text block content or todo items
+            // Preview: first text block content or todo items (strip HTML tags)
             const textPreview = blocks
               .filter((b) => b.type === 'text' && b.content)
-              .map((b) => b.content)
+              .map((b) => b.content.replace(/<[^>]*>/g, ''))
               .join(' ')
               .slice(0, 120);
             const todoCount = blocks.filter((b) => b.type === 'todo').length;
