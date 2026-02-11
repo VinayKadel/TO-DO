@@ -8,8 +8,8 @@ import { DashboardContent } from '@/components/dashboard';
 import { subDays, addDays, startOfDay } from 'date-fns';
 
 export const metadata = {
-  title: 'Dashboard - HabitTrack',
-  description: 'Track your daily habits and notes with HabitTrack',
+  title: 'Dashboard - SONITRACK',
+  description: 'Track your daily habits and notes with SONITRACK',
 };
 
 // Force dynamic rendering for authenticated pages
@@ -97,7 +97,7 @@ export default async function DashboardPage() {
 
       {/* Footer */}
       <footer className="py-4 text-center text-sm text-gray-400 dark:text-gray-500">
-        <p>© {new Date().getFullYear()} HabitTrack. Build better habits.</p>
+        <p>© {new Date().getFullYear()} SONITRACK. Stay on track.</p>
       </footer>
     </div>
   );

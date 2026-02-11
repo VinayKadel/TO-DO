@@ -2,7 +2,7 @@
 
 // Header/Navbar component for the dashboard
 import { useSession, signOut } from 'next-auth/react';
-import { LogOut, User, CheckSquare } from 'lucide-react';
+import { LogOut, User } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { useState } from 'react';
@@ -22,10 +22,8 @@ export function Header() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center">
-              <CheckSquare className="w-6 h-6 text-white" />
-            </div>
-            <span className="text-xl font-bold text-gray-900 dark:text-white">HabitTrack</span>
+            <img src="/favicon.svg" alt="SONITRACK" className="w-10 h-10 rounded-xl" />
+            <span className="text-xl font-bold text-gray-900 dark:text-white font-[family-name:var(--font-brand)] tracking-tight">SONITRACK</span>
           </div>
 
           {/* Right side actions */}

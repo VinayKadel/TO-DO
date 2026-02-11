@@ -1,23 +1,24 @@
 // Root layout for the Next.js app
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, Space_Grotesk } from 'next/font/google';
 import { SessionProvider } from '@/components/providers/session-provider';
 import { ThemeProvider } from '@/components/providers/theme-provider';
 import { PWAWrapper } from '@/components/providers/pwa-wrapper';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'], display: 'swap' });
+const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], display: 'swap', variable: '--font-brand' });
 
 export const metadata: Metadata = {
-  title: 'HabitTrack - Daily Habit Tracker',
-  description: 'Track your daily habits and build consistency with HabitTrack. A simple, beautiful habit tracking app.',
-  keywords: ['habit tracker', 'todo', 'productivity', 'daily habits', 'task management'],
-  authors: [{ name: 'HabitTrack' }],
+  title: 'SONITRACK - Your Productivity Companion',
+  description: 'Track your daily habits, to-dos, and notes with SONITRACK. A sleek, powerful productivity app.',
+  keywords: ['habit tracker', 'todo', 'productivity', 'daily habits', 'task management', 'notes'],
+  authors: [{ name: 'SONITRACK' }],
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'HabitTrack',
+    title: 'SONITRACK',
   },
   formatDetection: {
     telephone: false,
@@ -40,9 +41,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.className} suppressHydrationWarning>
+    <html lang="en" className={`${inter.className} ${spaceGrotesk.variable}`} suppressHydrationWarning>
       <head>
-        <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192.png" />
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
       </head>
       <body className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">

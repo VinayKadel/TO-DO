@@ -3,11 +3,10 @@ import { redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { RegisterForm } from '@/components/auth';
-import { CheckSquare } from 'lucide-react';
 
 export const metadata = {
-  title: 'Create Account - HabitTrack',
-  description: 'Create your HabitTrack account and start tracking your habits',
+  title: 'Create Account - SONITRACK',
+  description: 'Create your SONITRACK account and start tracking',
 };
 
 export default async function RegisterPage() {
@@ -27,10 +26,8 @@ export default async function RegisterPage() {
 
       {/* Logo */}
       <div className="flex items-center gap-3 mb-8 relative">
-        <div className="w-12 h-12 bg-primary-600 rounded-xl flex items-center justify-center shadow-lg shadow-primary-200 dark:shadow-primary-900/50">
-          <CheckSquare className="w-7 h-7 text-white" />
-        </div>
-        <span className="text-2xl font-bold text-gray-900 dark:text-white">HabitTrack</span>
+        <img src="/favicon.svg" alt="SONITRACK" className="w-12 h-12 rounded-xl shadow-lg shadow-primary-200 dark:shadow-primary-900/50" />
+        <span className="text-2xl font-bold text-gray-900 dark:text-white font-[family-name:var(--font-brand)] tracking-tight">SONITRACK</span>
       </div>
 
       {/* Register form */}

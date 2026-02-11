@@ -1,7 +1,7 @@
-// Service Worker for HabitTrack PWA
-const CACHE_NAME = 'habittrack-v3';
-const STATIC_CACHE_NAME = 'habittrack-static-v3';
-const DYNAMIC_CACHE_NAME = 'habittrack-dynamic-v3';
+// Service Worker for SONITRACK PWA
+const CACHE_NAME = 'sonitrack-v1';
+const STATIC_CACHE_NAME = 'sonitrack-static-v1';
+const DYNAMIC_CACHE_NAME = 'sonitrack-dynamic-v1';
 
 // Static assets to cache
 const STATIC_ASSETS = [
@@ -114,7 +114,7 @@ self.addEventListener('push', (event) => {
       },
     };
     event.waitUntil(
-      self.registration.showNotification(data.title || 'HabitTrack', options)
+      self.registration.showNotification(data.title || 'SONITRACK', options)
     );
   }
 });
