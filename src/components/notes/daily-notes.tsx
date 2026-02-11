@@ -165,19 +165,35 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
   // ─── Show notification via Service Worker (mobile) or Notification API (desktop) ─
   const showNotification = useCallback(async (title: string, body: string, tag: string) => {
     try {
-      // Try service worker first (works on mobile + background)
-      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      if ('serviceWorker' in navigator) {
         const reg = await navigator.serviceWorker.ready;
-        await reg.showNotification(title, {
-          body,
-          icon: '/icons/icon-192.png',
-          badge: '/icons/icon-72.png',
-          tag,
-          data: { url: '/dashboard' },
-        } as NotificationOptions);
-        return;
+        if (reg) {
+          // Method 1: Direct showNotification (most reliable)
+          try {
+            await reg.showNotification(title, {
+              body,
+              icon: '/icons/icon-192.png',
+              badge: '/icons/icon-72.png',
+              tag,
+              data: { url: '/dashboard' },
+            } as NotificationOptions);
+            return;
+          } catch {
+            // If showNotification fails, try message-based approach
+          }
+          // Method 2: Post message to service worker
+          if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+              type: 'SHOW_NOTIFICATION',
+              title,
+              body,
+              tag,
+            });
+            return;
+          }
+        }
       }
-      // Fallback to basic Notification API (desktop)
+      // Method 3: Fallback to basic Notification API (desktop)
       if ('Notification' in window && Notification.permission === 'granted') {
         new Notification(title, { body, icon: '/icon.svg', tag });
       }
@@ -202,6 +218,7 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
       // If we're viewing today, prefer live items state
       const finalItems = (dateKey === todayKey) ? items : itemsToCheck;
 
+      const itemsToFire: string[] = [];
       finalItems.forEach((item) => {
         if (
           item.reminderTime &&
@@ -211,8 +228,28 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
         ) {
           firedRemindersRef.current.add(`${todayKey}-${item.id}-${item.reminderTime}`);
           showNotification('⏰ To-Do Reminder', item.text, `reminder-${item.id}`);
+          itemsToFire.push(item.id);
         }
       });
+
+      // Auto-clear reminder time after notification fires
+      if (itemsToFire.length > 0 && dateKey === todayKey) {
+        setItems(prev => {
+          const cleared = prev.map((item) =>
+            itemsToFire.includes(item.id) ? { ...item, reminderTime: undefined } : item
+          );
+          // Schedule save outside of setState
+          setTimeout(() => {
+            const content = serializeItems(cleared);
+            fetch('/api/notes', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ date: formatDateForStorage(new Date()), content }),
+            }).catch(() => {});
+          }, 100);
+          return cleared;
+        });
+      }
     };
 
     checkReminders();
@@ -679,16 +716,16 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
                   draggedItemId === item.id && 'opacity-50'
                 )}
               >
+                {/* Task row: checkbox + text (+ action buttons on desktop) */}
                 <div className="flex items-start gap-3">
-                  <div
-                    className={cn(
-                      'flex-shrink-0 w-5 h-5 mt-0.5 flex items-center justify-center text-gray-300 dark:text-gray-600 cursor-grab active:cursor-grabbing transition-opacity',
-                      !isMobile && 'opacity-0 group-hover:opacity-100'
-                    )}
-                    title="Drag to reorder"
-                  >
-                    <GripVertical className="w-4 h-4" />
-                  </div>
+                  {!isMobile && (
+                    <div
+                      className="flex-shrink-0 w-5 h-5 mt-0.5 flex items-center justify-center text-gray-300 dark:text-gray-600 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Drag to reorder"
+                    >
+                      <GripVertical className="w-4 h-4" />
+                    </div>
+                  )}
                   <button
                     onClick={() => toggleTask(item.id)}
                     className={cn(
@@ -732,49 +769,44 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
                         {item.text}
                       </span>
                       
-                      {/* Reminder bell icon — always visible on mobile */}
-                      <button
-                        onClick={() => openReminderPicker(item)}
-                        className={cn(
-                          'flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg transition-all',
-                          item.reminderTime
-                            ? 'text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20'
-                            : 'text-gray-400 dark:text-gray-500 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20',
-                          !item.reminderTime && !isMobile && 'sm:opacity-0 sm:group-hover:opacity-100'
-                        )}
-                        title={item.reminderTime ? `Reminder at ${item.reminderTime}` : 'Set reminder'}
-                      >
-                        {item.reminderTime ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-                      </button>
-
-                      <button
-                        onClick={() => startEditing(item)}
-                        className={cn(
-                          'flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-primary-500 dark:hover:text-primary-400 transition-all rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20',
-                          !isMobile && 'sm:opacity-0 sm:group-hover:opacity-100'
-                        )}
-                        title="Edit task"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
+                      {/* Desktop: action buttons inline */}
+                      {!isMobile && (
+                        <>
+                          <button
+                            onClick={() => openReminderPicker(item)}
+                            className={cn(
+                              'flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg transition-all',
+                              item.reminderTime
+                                ? 'text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20'
+                                : 'text-gray-400 dark:text-gray-500 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 opacity-0 group-hover:opacity-100'
+                            )}
+                            title={item.reminderTime ? `Reminder at ${item.reminderTime}` : 'Set reminder'}
+                          >
+                            {item.reminderTime ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                          </button>
+                          <button
+                            onClick={() => startEditing(item)}
+                            className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-primary-500 dark:hover:text-primary-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20"
+                            title="Edit task"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => deleteTask(item.id)}
+                            className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                            title="Delete task"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
                     </>
                   )}
-                  
-                  <button
-                    onClick={() => deleteTask(item.id)}
-                    className={cn(
-                      'flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-all rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20',
-                      !isMobile && 'sm:opacity-0 sm:group-hover:opacity-100'
-                    )}
-                    title="Delete task"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
                 </div>
 
                 {/* Reminder badge */}
-                {item.reminderTime && reminderPickerId !== item.id && (
-                  <div className="flex items-center gap-1.5 mt-2 ml-14">
+                {item.reminderTime && reminderPickerId !== item.id && editingId !== item.id && (
+                  <div className={cn('flex items-center gap-1.5 mt-2', isMobile ? 'ml-9' : 'ml-14')}>
                     <Clock className="w-3 h-3 text-amber-500 dark:text-amber-400" />
                     <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
                       Reminder at {item.reminderTime}
@@ -789,9 +821,44 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
                   </div>
                 )}
 
+                {/* Mobile: action buttons in footer row */}
+                {isMobile && editingId !== item.id && (
+                  <div className="flex items-center gap-1 mt-2 ml-9 pt-2 border-t border-gray-100 dark:border-gray-700/50">
+                    <button
+                      onClick={() => openReminderPicker(item)}
+                      className={cn(
+                        'flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-all',
+                        item.reminderTime
+                          ? 'text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20'
+                          : 'text-gray-400 dark:text-gray-500 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                      )}
+                    >
+                      {item.reminderTime ? <BellRing className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
+                      <span>{item.reminderTime ? item.reminderTime : 'Remind'}</span>
+                    </button>
+                    <button
+                      onClick={() => startEditing(item)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-gray-400 dark:text-gray-500 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      <span>Edit</span>
+                    </button>
+                    <button
+                      onClick={() => deleteTask(item.id)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all ml-auto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete</span>
+                    </button>
+                  </div>
+                )}
+
                 {/* Reminder time picker */}
                 {reminderPickerId === item.id && (
-                  <div className="flex items-center gap-2 mt-2 ml-14 p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                  <div className={cn(
+                    'flex flex-wrap items-center gap-2 mt-2 p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800',
+                    isMobile ? 'ml-0' : 'ml-14'
+                  )}>
                     <Clock className="w-4 h-4 text-amber-500 dark:text-amber-400 flex-shrink-0" />
                     <input
                       type="time"
