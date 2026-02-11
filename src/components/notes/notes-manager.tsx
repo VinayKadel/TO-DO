@@ -120,9 +120,11 @@ function NoteEditor({
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
-        const newBlock: NoteBlock = { id: blockId(), type: 'image', content: reader.result as string };
+        const imgBlock: NoteBlock = { id: blockId(), type: 'image', content: reader.result as string, imageSize: 100 };
+        const textBlock: NoteBlock = { id: blockId(), type: 'text', content: '' };
         const newBlocks = [...blocks];
-        newBlocks.splice(index + 1, 0, newBlock);
+        newBlocks.splice(index + 1, 0, imgBlock, textBlock);
+        focusBlockRef.current = textBlock.id;
         updateBlocks(newBlocks);
       };
       reader.readAsDataURL(file);
@@ -138,6 +140,11 @@ function NoteEditor({
   // Update a block's content
   const updateBlockContent = (id: string, content: string) => {
     updateBlocks(blocks.map((b) => (b.id === id ? { ...b, content } : b)));
+  };
+
+  // Update image size
+  const updateImageSize = (id: string, size: number) => {
+    updateBlocks(blocks.map((b) => (b.id === id ? { ...b, imageSize: size } : b)));
   };
 
   // Toggle todo
@@ -345,15 +352,36 @@ function NoteEditor({
 
               {/* Image */}
               {block.type === 'image' && (
-                <div className="relative my-2 rounded-xl overflow-hidden">
-                  <img
-                    src={block.content}
-                    alt=""
-                    className="w-full max-h-80 object-contain rounded-xl bg-gray-50 dark:bg-gray-900"
-                  />
+                <div className="relative my-2 group/img">
+                  <div style={{ width: `${block.imageSize || 100}%` }}>
+                    <div className="rounded-xl overflow-hidden">
+                      <img
+                        src={block.content}
+                        alt=""
+                        className="w-full object-contain rounded-xl bg-gray-50 dark:bg-gray-900"
+                      />
+                    </div>
+                    {/* Resize controls */}
+                    <div className="flex items-center gap-1.5 mt-1.5 opacity-0 group-hover/img:opacity-100 transition-opacity">
+                      {[25, 50, 75, 100].map((size) => (
+                        <button
+                          key={size}
+                          onClick={() => updateImageSize(block.id, size)}
+                          className={cn(
+                            'px-2 py-0.5 text-[10px] font-medium rounded-md transition-all',
+                            (block.imageSize || 100) === size
+                              ? 'bg-primary-500 text-white'
+                              : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+                          )}
+                        >
+                          {size}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <button
                     onClick={() => deleteBlock(block.id)}
-                    className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-black/70 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-black/70 text-white rounded-lg opacity-0 group-hover/img:opacity-100 transition-opacity"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>

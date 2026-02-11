@@ -116,6 +116,7 @@ export interface NoteBlock {
   type: 'text' | 'todo' | 'image';
   content: string; // For text: the text, for todo: the label, for image: the URL/data URI
   completed?: boolean; // Only for todo type
+  imageSize?: number; // Only for image type: width percentage (25-100)
 }
 
 export interface NoteData {
