@@ -1,6 +1,6 @@
 'use client';
 
-// Notes Manager - free-form notes with cards, rich content (text, todos, images)
+// Notes Manager - free-form notes like Google Keep / Apple Notes
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus,
@@ -11,10 +11,8 @@ import {
   X,
   ImagePlus,
   ListChecks,
-  Type,
   MoreVertical,
   StickyNote,
-  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { cn } from '@/lib/utils';
@@ -25,7 +23,7 @@ function blockId() {
   return `b_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-// ─── Note Editor ─────────────────────────────────────────────────────
+// ─── Note Editor (seamless, single-page) ─────────────────────────────
 function NoteEditor({
   note,
   onBack,
@@ -40,18 +38,21 @@ function NoteEditor({
   const [title, setTitle] = useState(note.title);
   const [blocks, setBlocks] = useState<NoteBlock[]>(() => {
     try {
-      return JSON.parse(note.content);
+      const parsed = JSON.parse(note.content);
+      // Ensure there's always at least one text block to type in
+      if (!parsed.length) return [{ id: blockId(), type: 'text' as const, content: '' }];
+      return parsed;
     } catch {
-      return [];
+      return [{ id: blockId(), type: 'text' as const, content: '' }];
     }
   });
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [editingTitle, setEditingTitle] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const titleInputRef = useRef<HTMLInputElement>(null);
+  const blockRefs = useRef<Map<string, HTMLTextAreaElement | HTMLInputElement>>(new Map());
+  const focusBlockRef = useRef<string | null>(null);
 
-  // Auto-save with debounce
+  // Auto-save
   const triggerAutoSave = useCallback(
     (newTitle: string, newBlocks: NoteBlock[]) => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -67,9 +68,7 @@ function NoteEditor({
             }),
           });
           const data = await res.json();
-          if (data.success) {
-            onUpdate(data.data);
-          }
+          if (data.success) onUpdate(data.data);
         } catch (err) {
           console.error('Failed to save note:', err);
         } finally {
@@ -80,33 +79,39 @@ function NoteEditor({
     [note.id, onUpdate]
   );
 
-  // Update title
-  const handleTitleChange = (newTitle: string) => {
-    setTitle(newTitle);
-    triggerAutoSave(newTitle, blocks);
-  };
-
-  // Update blocks
-  const updateBlocks = (newBlocks: NoteBlock[]) => {
+  const updateBlocks = useCallback((newBlocks: NoteBlock[]) => {
     setBlocks(newBlocks);
     triggerAutoSave(title, newBlocks);
+  }, [title, triggerAutoSave]);
+
+  // Focus newly created block
+  useEffect(() => {
+    if (focusBlockRef.current) {
+      const el = blockRefs.current.get(focusBlockRef.current);
+      if (el) {
+        el.focus();
+        focusBlockRef.current = null;
+      }
+    }
+  });
+
+  // Title change
+  const handleTitleChange = (val: string) => {
+    setTitle(val);
+    triggerAutoSave(val, blocks);
   };
 
-  // Add a text block
-  const addTextBlock = () => {
-    updateBlocks([...blocks, { id: blockId(), type: 'text', content: '' }]);
+  // Insert a checklist item after a given block index (or at the end)
+  const insertTodoAfter = (index: number) => {
+    const newBlock: NoteBlock = { id: blockId(), type: 'todo', content: '', completed: false };
+    const newBlocks = [...blocks];
+    newBlocks.splice(index + 1, 0, newBlock);
+    focusBlockRef.current = newBlock.id;
+    updateBlocks(newBlocks);
   };
 
-  // Add a todo block
-  const addTodoBlock = () => {
-    updateBlocks([
-      ...blocks,
-      { id: blockId(), type: 'todo', content: '', completed: false },
-    ]);
-  };
-
-  // Add image block via file picker
-  const addImageBlock = () => {
+  // Insert image after a given block index (or at end)
+  const insertImageAfter = (index: number) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
@@ -115,39 +120,71 @@ function NoteEditor({
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
-        const dataUrl = reader.result as string;
-        updateBlocks([
-          ...blocks,
-          { id: blockId(), type: 'image', content: dataUrl },
-        ]);
+        const newBlock: NoteBlock = { id: blockId(), type: 'image', content: reader.result as string };
+        const newBlocks = [...blocks];
+        newBlocks.splice(index + 1, 0, newBlock);
+        updateBlocks(newBlocks);
       };
       reader.readAsDataURL(file);
     };
     input.click();
   };
 
+  // Add checklist at the end
+  const addTodoAtEnd = () => insertTodoAfter(blocks.length - 1);
+  // Add image at the end
+  const addImageAtEnd = () => insertImageAfter(blocks.length - 1);
+
   // Update a block's content
   const updateBlockContent = (id: string, content: string) => {
-    updateBlocks(
-      blocks.map((b) => (b.id === id ? { ...b, content } : b))
-    );
+    updateBlocks(blocks.map((b) => (b.id === id ? { ...b, content } : b)));
   };
 
-  // Toggle todo completion
-  const toggleTodoBlock = (id: string) => {
-    updateBlocks(
-      blocks.map((b) =>
-        b.id === id ? { ...b, completed: !b.completed } : b
-      )
-    );
+  // Toggle todo
+  const toggleTodo = (id: string) => {
+    updateBlocks(blocks.map((b) => (b.id === id ? { ...b, completed: !b.completed } : b)));
   };
 
-  // Delete a block
+  // Delete a block (keep at least one text block)
   const deleteBlock = (id: string) => {
-    updateBlocks(blocks.filter((b) => b.id !== id));
+    const newBlocks = blocks.filter((b) => b.id !== id);
+    if (newBlocks.length === 0) {
+      newBlocks.push({ id: blockId(), type: 'text', content: '' });
+    }
+    updateBlocks(newBlocks);
   };
 
-  // Handle delete note
+  // Handle Enter in a todo → create next todo
+  const handleTodoKeyDown = (e: React.KeyboardEvent, index: number, block: NoteBlock) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (block.content.trim() === '') {
+        // Empty todo + Enter → convert to text block
+        const newBlocks = [...blocks];
+        newBlocks[index] = { ...block, type: 'text', content: '' };
+        focusBlockRef.current = block.id;
+        updateBlocks(newBlocks);
+      } else {
+        insertTodoAfter(index);
+      }
+    }
+    if (e.key === 'Backspace' && block.content === '') {
+      e.preventDefault();
+      // Remove this todo and focus previous
+      const newBlocks = blocks.filter((b) => b.id !== block.id);
+      if (newBlocks.length === 0) newBlocks.push({ id: blockId(), type: 'text', content: '' });
+      if (index > 0) focusBlockRef.current = newBlocks[Math.min(index - 1, newBlocks.length - 1)].id;
+      updateBlocks(newBlocks);
+    }
+  };
+
+  // Auto-resize textarea
+  const autoResize = (el: HTMLTextAreaElement) => {
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+  };
+
+  // Delete note
   const handleDeleteNote = async () => {
     try {
       await fetch(`/api/user-notes/${note.id}`, { method: 'DELETE' });
@@ -158,17 +195,10 @@ function NoteEditor({
     }
   };
 
-  useEffect(() => {
-    if (editingTitle && titleInputRef.current) {
-      titleInputRef.current.focus();
-      titleInputRef.current.select();
-    }
-  }, [editingTitle]);
-
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full max-w-2xl mx-auto">
       {/* Top bar */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <button
           onClick={onBack}
           className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
@@ -177,12 +207,28 @@ function NoteEditor({
           <span className="text-sm font-medium">All Notes</span>
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           {isSaving && (
-            <span className="flex items-center gap-1 text-xs text-gray-400">
-              <Loader2 className="w-3 h-3 animate-spin" /> Saving...
+            <span className="flex items-center gap-1 text-xs text-gray-400 mr-2">
+              <Loader2 className="w-3 h-3 animate-spin" /> Saving
             </span>
           )}
+          {/* Inline toolbar */}
+          <button
+            onClick={addTodoAtEnd}
+            className="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            title="Add checklist"
+          >
+            <ListChecks className="w-4 h-4" />
+          </button>
+          <button
+            onClick={addImageAtEnd}
+            className="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            title="Add image"
+          >
+            <ImagePlus className="w-4 h-4" />
+          </button>
+          <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1" />
           <button
             onClick={() => setShowDeleteConfirm(true)}
             className="p-2 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
@@ -196,160 +242,99 @@ function NoteEditor({
       {/* Delete confirmation */}
       {showDeleteConfirm && (
         <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 flex items-center justify-between gap-3">
-          <span className="text-sm text-red-700 dark:text-red-300">
-            Delete this note permanently?
-          </span>
+          <span className="text-sm text-red-700 dark:text-red-300">Delete this note permanently?</span>
           <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setShowDeleteConfirm(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              variant="danger"
-              onClick={handleDeleteNote}
-            >
-              Delete
-            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
+            <Button size="sm" variant="danger" onClick={handleDeleteNote}>Delete</Button>
           </div>
         </div>
       )}
 
-      {/* Title */}
-      <div className="mb-6">
-        {editingTitle ? (
-          <input
-            ref={titleInputRef}
-            value={title}
-            onChange={(e) => handleTitleChange(e.target.value)}
-            onBlur={() => setEditingTitle(false)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') setEditingTitle(false);
-            }}
-            className="w-full text-2xl sm:text-3xl font-bold bg-transparent border-b-2 border-primary-400 dark:border-primary-500 outline-none text-gray-900 dark:text-white pb-1"
-            placeholder="Note title..."
-          />
-        ) : (
-          <button
-            onClick={() => setEditingTitle(true)}
-            className="group flex items-center gap-2 w-full text-left"
-          >
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
-              {title || 'Untitled'}
-            </h1>
-            <Pencil className="w-4 h-4 text-gray-300 dark:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
-        )}
-      </div>
+      {/* Seamless note body */}
+      <div className="flex-1 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm p-5 sm:p-6 overflow-y-auto">
+        {/* Title */}
+        <input
+          value={title}
+          onChange={(e) => handleTitleChange(e.target.value)}
+          placeholder="Title"
+          className="w-full text-xl sm:text-2xl font-bold bg-transparent outline-none text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-gray-600 mb-4"
+        />
 
-      {/* Content blocks */}
-      <div className="flex-1 space-y-3 pb-24">
-        {blocks.length === 0 && (
-          <div className="text-center py-12 text-gray-400 dark:text-gray-500">
-            <Type className="w-8 h-8 mx-auto mb-3 opacity-50" />
-            <p className="text-sm">
-              Start adding content using the buttons below
-            </p>
-          </div>
-        )}
-
-        {blocks.map((block) => (
-          <div key={block.id} className="group relative">
-            {/* Delete block button */}
-            <button
-              onClick={() => deleteBlock(block.id)}
-              className="absolute -right-2 -top-2 z-10 p-1 bg-white dark:bg-gray-800 rounded-full shadow border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              <X className="w-3 h-3" />
-            </button>
-
-            {block.type === 'text' && (
-              <textarea
-                value={block.content}
-                onChange={(e) =>
-                  updateBlockContent(block.id, e.target.value)
-                }
-                placeholder="Write something..."
-                className="w-full min-h-[80px] p-4 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 resize-y focus:ring-2 focus:ring-primary-500/20 focus:border-primary-300 dark:focus:border-primary-600 transition-all text-sm leading-relaxed"
-                style={{
-                  height: 'auto',
-                  minHeight: `${Math.max(80, (block.content.split('\n').length + 1) * 24)}px`,
-                }}
-              />
-            )}
-
-            {block.type === 'todo' && (
-              <div className="flex items-start gap-3 p-4 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                <button
-                  onClick={() => toggleTodoBlock(block.id)}
-                  className={cn(
-                    'flex-shrink-0 w-5 h-5 mt-0.5 rounded-md border-2 flex items-center justify-center transition-all',
-                    block.completed
-                      ? 'bg-emerald-500 border-emerald-500 text-white'
-                      : 'border-gray-300 dark:border-gray-600 hover:border-primary-500'
-                  )}
-                >
-                  {block.completed && <Check className="w-3 h-3" />}
-                </button>
-                <input
+        {/* Blocks flow seamlessly */}
+        <div className="space-y-1">
+          {blocks.map((block, index) => (
+            <div key={block.id} className="group relative">
+              {/* Text block */}
+              {block.type === 'text' && (
+                <textarea
+                  ref={(el) => { if (el) blockRefs.current.set(block.id, el); }}
                   value={block.content}
-                  onChange={(e) =>
-                    updateBlockContent(block.id, e.target.value)
-                  }
-                  placeholder="To-do item..."
-                  className={cn(
-                    'flex-1 bg-transparent outline-none text-sm',
-                    block.completed
-                      ? 'line-through text-gray-400 dark:text-gray-500'
-                      : 'text-gray-900 dark:text-white'
-                  )}
+                  onChange={(e) => {
+                    updateBlockContent(block.id, e.target.value);
+                    autoResize(e.target);
+                  }}
+                  onFocus={(e) => autoResize(e.target)}
+                  placeholder={index === 0 && blocks.length === 1 ? 'Start typing your note...' : ''}
+                  className="w-full bg-transparent outline-none text-sm text-gray-700 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 resize-none leading-relaxed overflow-hidden"
+                  rows={1}
+                  style={{ minHeight: '24px' }}
                 />
-              </div>
-            )}
+              )}
 
-            {block.type === 'image' && (
-              <div className="rounded-xl overflow-hidden bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                <img
-                  src={block.content}
-                  alt="Note image"
-                  className="w-full max-h-96 object-contain"
-                />
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+              {/* Todo / checklist item */}
+              {block.type === 'todo' && (
+                <div className="flex items-start gap-2 py-0.5">
+                  <button
+                    onClick={() => toggleTodo(block.id)}
+                    className={cn(
+                      'flex-shrink-0 w-[18px] h-[18px] mt-[3px] rounded border-2 flex items-center justify-center transition-all',
+                      block.completed
+                        ? 'bg-primary-500 border-primary-500 text-white'
+                        : 'border-gray-300 dark:border-gray-500 hover:border-primary-400'
+                    )}
+                  >
+                    {block.completed && <Check className="w-3 h-3" />}
+                  </button>
+                  <input
+                    ref={(el) => { if (el) blockRefs.current.set(block.id, el); }}
+                    value={block.content}
+                    onChange={(e) => updateBlockContent(block.id, e.target.value)}
+                    onKeyDown={(e) => handleTodoKeyDown(e, index, block)}
+                    placeholder="To-do..."
+                    className={cn(
+                      'flex-1 bg-transparent outline-none text-sm leading-relaxed',
+                      block.completed
+                        ? 'line-through text-gray-400 dark:text-gray-500'
+                        : 'text-gray-700 dark:text-gray-200'
+                    )}
+                  />
+                  <button
+                    onClick={() => deleteBlock(block.id)}
+                    className="flex-shrink-0 p-0.5 text-gray-300 dark:text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
 
-      {/* Floating action bar */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-20">
-        <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700">
-          <button
-            onClick={addTextBlock}
-            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
-            title="Add text"
-          >
-            <Type className="w-4 h-4" />
-            <span className="hidden sm:inline">Text</span>
-          </button>
-          <button
-            onClick={addTodoBlock}
-            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
-            title="Add to-do"
-          >
-            <ListChecks className="w-4 h-4" />
-            <span className="hidden sm:inline">To-Do</span>
-          </button>
-          <button
-            onClick={addImageBlock}
-            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
-            title="Add image"
-          >
-            <ImagePlus className="w-4 h-4" />
-            <span className="hidden sm:inline">Image</span>
-          </button>
+              {/* Image */}
+              {block.type === 'image' && (
+                <div className="relative my-2 rounded-xl overflow-hidden">
+                  <img
+                    src={block.content}
+                    alt=""
+                    className="w-full max-h-80 object-contain rounded-xl bg-gray-50 dark:bg-gray-900"
+                  />
+                  <button
+                    onClick={() => deleteBlock(block.id)}
+                    className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-black/70 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
     </div>
