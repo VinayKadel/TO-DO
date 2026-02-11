@@ -109,3 +109,21 @@ export interface CreateDailyNoteInput {
 export interface UpdateDailyNoteInput {
   content: string;
 }
+
+// Note types (free-form notes section)
+export interface NoteBlock {
+  id: string;
+  type: 'text' | 'todo' | 'image';
+  content: string; // For text: the text, for todo: the label, for image: the URL/data URI
+  completed?: boolean; // Only for todo type
+}
+
+export interface NoteData {
+  id: string;
+  title: string;
+  content: string; // JSON string of NoteBlock[]
+  sortOrder: number;
+  createdAt: Date;
+  updatedAt: Date;
+  userId: string;
+}

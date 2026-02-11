@@ -22,6 +22,7 @@ model User {
   // Relations
   tasks         Task[]
   dailyNotes    DailyNote[]
+  notes         Note[]
   
   @@map("users")
 }
@@ -85,4 +86,21 @@ model DailyNote {
   @@index([userId])
   @@index([date])
   @@map("daily_notes")
+}
+
+// Note model - stores free-form notes with rich content
+model Note {
+  id        String   @id @default(cuid())
+  title     String
+  content   String   @db.Text // JSON string storing blocks of content
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@map("notes")
 }

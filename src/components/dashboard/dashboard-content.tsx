@@ -2,9 +2,10 @@
 
 // Dashboard content with tab switching
 import { useState, useEffect } from 'react';
-import { CheckSquare, FileText } from 'lucide-react';
+import { CheckSquare, ListTodo, StickyNote } from 'lucide-react';
 import { HabitGrid } from '@/components/tasks';
 import { DailyNotes } from '@/components/notes';
+import { NotesManager } from '@/components/notes';
 import { TabSwitcher } from '@/components/ui/tab-switcher';
 import { TaskWithCompletions, DailyNote } from '@/types';
 
@@ -15,7 +16,8 @@ interface DashboardContentProps {
 
 const TABS = [
   { id: 'habits', label: 'Habit Tracker', icon: <CheckSquare className="w-4 h-4" /> },
-  { id: 'notes', label: 'Daily Notes', icon: <FileText className="w-4 h-4" /> },
+  { id: 'todos', label: "Daily To-Do's", icon: <ListTodo className="w-4 h-4" /> },
+  { id: 'notes', label: 'Notes', icon: <StickyNote className="w-4 h-4" /> },
 ];
 
 export function DashboardContent({ tasks, notes }: DashboardContentProps) {
@@ -24,7 +26,11 @@ export function DashboardContent({ tasks, notes }: DashboardContentProps) {
   // Persist tab preference
   useEffect(() => {
     const saved = localStorage.getItem('dashboard-tab');
-    if (saved && TABS.find(t => t.id === saved)) {
+    // Migrate old 'notes' preference to 'todos'
+    if (saved === 'notes') {
+      localStorage.setItem('dashboard-tab', 'todos');
+      setActiveTab('todos');
+    } else if (saved && TABS.find(t => t.id === saved)) {
       setActiveTab(saved);
     }
   }, []);
@@ -48,7 +54,8 @@ export function DashboardContent({ tasks, notes }: DashboardContentProps) {
       {/* Content */}
       <div className="flex-1">
         {activeTab === 'habits' && <HabitGrid initialTasks={tasks} />}
-        {activeTab === 'notes' && <DailyNotes initialNotes={notes} />}
+        {activeTab === 'todos' && <DailyNotes initialNotes={notes} />}
+        {activeTab === 'notes' && <NotesManager />}
       </div>
     </div>
   );
