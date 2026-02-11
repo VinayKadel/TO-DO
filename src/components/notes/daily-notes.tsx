@@ -2,7 +2,7 @@
 
 // Daily To-Do Manager - manage your daily tasks with reminders
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { format, addDays, subDays, isToday, isBefore, startOfDay, isSameDay } from 'date-fns';
+import { format, addDays, subDays, isToday } from 'date-fns';
 import { ChevronLeft, ChevronRight, Calendar, Loader2, Check, Plus, Trash2, Pencil, GripVertical, ListTodo, Bell, BellOff, BellRing, Clock, CalendarDays, X } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { formatDateForStorage } from '@/lib/date-utils';
@@ -141,17 +141,52 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
 
   // ─── Request notification permission on mount ────────────────────
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setNotifPermission(Notification.permission);
-      if (Notification.permission === 'default') {
-        Notification.requestPermission().then((perm) => {
-          setNotifPermission(perm);
-        });
+    if (typeof window === 'undefined') return;
+    try {
+      if ('Notification' in window) {
+        setNotifPermission(Notification.permission);
+        if (Notification.permission === 'default') {
+          // Some browsers (older Safari) use callback instead of Promise
+          const result = Notification.requestPermission((perm) => {
+            setNotifPermission(perm);
+          });
+          // Modern browsers return a Promise
+          if (result && typeof result.then === 'function') {
+            result.then((perm) => setNotifPermission(perm)).catch(() => {});
+          }
+        }
       }
+    } catch {
+      // Notification API not supported
+      console.log('Notifications not supported on this device');
     }
   }, []);
 
-  // ─── Notification scheduler — checks every 30s ──────────────────
+  // ─── Show notification via Service Worker (mobile) or Notification API (desktop) ─
+  const showNotification = useCallback(async (title: string, body: string, tag: string) => {
+    try {
+      // Try service worker first (works on mobile + background)
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        const reg = await navigator.serviceWorker.ready;
+        await reg.showNotification(title, {
+          body,
+          icon: '/icons/icon-192.png',
+          badge: '/icons/icon-72.png',
+          tag,
+          data: { url: '/dashboard' },
+        } as NotificationOptions);
+        return;
+      }
+      // Fallback to basic Notification API (desktop)
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, { body, icon: '/icon.svg', tag });
+      }
+    } catch {
+      // Silently fail — notifications not supported
+    }
+  }, []);
+
+  // ─── Notification scheduler — checks every 15s ──────────────────
   useEffect(() => {
     if (notifPermission !== 'granted') return;
 
@@ -160,12 +195,14 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
       const currentTime = format(now, 'HH:mm');
       const todayKey = format(now, 'yyyy-MM-dd');
 
-      // Check all stored notes for today
+      // Also check the currently loaded items for the selected date (if it's today)
       const todayNote = notes[todayKey];
-      if (!todayNote) return;
+      const itemsToCheck = todayNote ? parseContent(todayNote.content) : [];
 
-      const todayItems = parseContent(todayNote.content);
-      todayItems.forEach((item) => {
+      // If we're viewing today, prefer live items state
+      const finalItems = (dateKey === todayKey) ? items : itemsToCheck;
+
+      finalItems.forEach((item) => {
         if (
           item.reminderTime &&
           !item.completed &&
@@ -173,19 +210,15 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
           !firedRemindersRef.current.has(`${todayKey}-${item.id}-${item.reminderTime}`)
         ) {
           firedRemindersRef.current.add(`${todayKey}-${item.id}-${item.reminderTime}`);
-          new Notification('⏰ To-Do Reminder', {
-            body: item.text,
-            icon: '/icon.svg',
-            tag: `reminder-${item.id}`,
-          });
+          showNotification('⏰ To-Do Reminder', item.text, `reminder-${item.id}`);
         }
       });
     };
 
     checkReminders();
-    const interval = setInterval(checkReminders, 30000);
+    const interval = setInterval(checkReminders, 15000);
     return () => clearInterval(interval);
-  }, [notifPermission, notes]);
+  }, [notifPermission, notes, items, dateKey, showNotification]);
 
   // ─── Set/remove reminder on a task ───────────────────────────────
   const setReminder = (id: string, time: string | undefined) => {
@@ -648,7 +681,10 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
               >
                 <div className="flex items-start gap-3">
                   <div
-                    className="flex-shrink-0 w-5 h-5 mt-0.5 flex items-center justify-center text-gray-300 dark:text-gray-600 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity"
+                    className={cn(
+                      'flex-shrink-0 w-5 h-5 mt-0.5 flex items-center justify-center text-gray-300 dark:text-gray-600 cursor-grab active:cursor-grabbing transition-opacity',
+                      !isMobile && 'opacity-0 group-hover:opacity-100'
+                    )}
                     title="Drag to reorder"
                   >
                     <GripVertical className="w-4 h-4" />
@@ -696,14 +732,15 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
                         {item.text}
                       </span>
                       
-                      {/* Reminder bell icon */}
+                      {/* Reminder bell icon — always visible on mobile */}
                       <button
                         onClick={() => openReminderPicker(item)}
                         className={cn(
                           'flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg transition-all',
                           item.reminderTime
                             ? 'text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20'
-                            : 'text-gray-300 dark:text-gray-600 hover:text-amber-500 dark:hover:text-amber-400 opacity-0 group-hover:opacity-100 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                            : 'text-gray-400 dark:text-gray-500 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20',
+                          !item.reminderTime && !isMobile && 'sm:opacity-0 sm:group-hover:opacity-100'
                         )}
                         title={item.reminderTime ? `Reminder at ${item.reminderTime}` : 'Set reminder'}
                       >
@@ -712,7 +749,10 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
 
                       <button
                         onClick={() => startEditing(item)}
-                        className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-300 dark:text-gray-600 hover:text-primary-500 dark:hover:text-primary-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20"
+                        className={cn(
+                          'flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-primary-500 dark:hover:text-primary-400 transition-all rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20',
+                          !isMobile && 'sm:opacity-0 sm:group-hover:opacity-100'
+                        )}
                         title="Edit task"
                       >
                         <Pencil className="w-4 h-4" />
@@ -722,7 +762,10 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
                   
                   <button
                     onClick={() => deleteTask(item.id)}
-                    className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                    className={cn(
+                      'flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-all rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20',
+                      !isMobile && 'sm:opacity-0 sm:group-hover:opacity-100'
+                    )}
                     title="Delete task"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -822,7 +865,10 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
                     
                     <button
                       onClick={() => deleteTask(item.id)}
-                      className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                      className={cn(
+                        'flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-all rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20',
+                        !isMobile && 'sm:opacity-0 sm:group-hover:opacity-100'
+                      )}
                       title="Delete task"
                     >
                       <Trash2 className="w-4 h-4" />
