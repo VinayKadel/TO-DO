@@ -3,7 +3,7 @@
 // Daily To-Do Manager - manage your daily tasks
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { format, addDays, subDays, isToday } from 'date-fns';
-import { ChevronLeft, ChevronRight, Calendar, Loader2, Check, Plus, Trash2, Pencil, X, ListTodo } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, Loader2, Check, Plus, Trash2, Pencil, GripVertical, ListTodo } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { formatDateForStorage } from '@/lib/date-utils';
 import { DailyNote } from '@/types';
@@ -107,6 +107,11 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
   const editInputRef = useRef<HTMLTextAreaElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
+
+  // Drag and drop state
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
+  const dragCounterRef = useRef(0);
 
   const dateKey = format(selectedDate, 'yyyy-MM-dd');
 
@@ -263,6 +268,67 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
     setEditText(e.target.value);
     e.target.style.height = 'auto';
     e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px';
+  };
+
+  // Drag and drop handlers for reordering
+  const handleDragStart = (e: React.DragEvent, itemId: string) => {
+    setDraggedItemId(itemId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', itemId);
+    (e.currentTarget as HTMLElement).style.opacity = '0.5';
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    (e.currentTarget as HTMLElement).style.opacity = '1';
+    setDraggedItemId(null);
+    setDragOverItemId(null);
+    dragCounterRef.current = 0;
+  };
+
+  const handleDragEnter = (e: React.DragEvent, itemId: string) => {
+    e.preventDefault();
+    dragCounterRef.current++;
+    if (itemId !== draggedItemId) {
+      setDragOverItemId(itemId);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setDragOverItemId(null);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent, targetItemId: string) => {
+    e.preventDefault();
+    dragCounterRef.current = 0;
+
+    if (!draggedItemId || draggedItemId === targetItemId) {
+      setDraggedItemId(null);
+      setDragOverItemId(null);
+      return;
+    }
+
+    const draggedIndex = items.findIndex(i => i.id === draggedItemId);
+    const targetIndex = items.findIndex(i => i.id === targetItemId);
+
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    const newItems = [...items];
+    const [draggedItem] = newItems.splice(draggedIndex, 1);
+    newItems.splice(targetIndex, 0, draggedItem);
+
+    setItems(newItems);
+    setDraggedItemId(null);
+    setDragOverItemId(null);
+    triggerAutoSave(newItems);
   };
 
   // Detect if device is mobile/touch
@@ -436,6 +502,13 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
             {items.filter(i => !i.completed).map((item) => (
               <div
                 key={item.id}
+                draggable={editingId !== item.id}
+                onDragStart={(e) => handleDragStart(e, item.id)}
+                onDragEnd={handleDragEnd}
+                onDragEnter={(e) => handleDragEnter(e, item.id)}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, item.id)}
                 className={cn(
                   'group flex items-start gap-3 p-4 rounded-xl',
                   'bg-white dark:bg-gray-800',
@@ -443,9 +516,17 @@ export function DailyNotes({ initialNotes = [] }: DailyNotesProps) {
                   'shadow-sm hover:shadow-md transition-all duration-200',
                   editingId === item.id 
                     ? 'border-primary-300 dark:border-primary-600 ring-2 ring-primary-100 dark:ring-primary-900/30'
-                    : 'hover:border-primary-200 dark:hover:border-primary-800'
+                    : 'hover:border-primary-200 dark:hover:border-primary-800',
+                  dragOverItemId === item.id && 'border-primary-400 dark:border-primary-500 bg-primary-50/50 dark:bg-primary-900/20',
+                  draggedItemId === item.id && 'opacity-50'
                 )}
               >
+                <div
+                  className="flex-shrink-0 w-5 h-5 mt-0.5 flex items-center justify-center text-gray-300 dark:text-gray-600 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Drag to reorder"
+                >
+                  <GripVertical className="w-4 h-4" />
+                </div>
                 <button
                   onClick={() => toggleTask(item.id)}
                   className={cn(
